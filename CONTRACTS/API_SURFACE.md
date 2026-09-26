@@ -26,7 +26,7 @@ Every response, regardless of HTTP status code, follows this exact shape:
 - On error: `data` is `null`. `error` contains the code and message.
 - `meta` is used for pagination info. `null` when not applicable.
 
-HTTP status codes are still used for transport semantics (200, 201, 401, 403, 404, 409, 422, 500), but the frontend always parses the same JSON structure.
+HTTP status codes are still used for transport semantics (200, 201, 401, 403, 404, 409, 410, 422, 500), but the frontend always parses the same JSON structure.
 
 ### Error Codes
 
@@ -37,6 +37,7 @@ HTTP status codes are still used for transport semantics (200, 201, 401, 403, 40
 | PASSWORD_CHANGE_REQUIRED | 403 | Must change password before proceeding |
 | NOT_FOUND           | 404  | Resource does not exist          |
 | CONFLICT            | 409  | Duplicate or state conflict      |
+| GONE                | 410  | Target was soft-deleted. Message: "Record not available anymore." |
 | VALIDATION_ERROR    | 422  | Request body failed validation   |
 | INTERNAL_ERROR      | 500  | Unexpected server error          |
 
@@ -114,9 +115,11 @@ Sets the session cookie. `must_change_password` is derived at login (see Busines
 }
 ```
 
+A soft-deleted user cannot log in. The response is the same 401 as for invalid credentials.
+
 ### POST /api/v1/auth/logout
 
-Clears the session cookie.
+Clears the session cookie and invalidates the session server-side.
 
 **Success (200):**
 ```json
@@ -183,7 +186,8 @@ Returns the server's current month and whether the user needs to acknowledge a m
   "data": {
     "current_month": "2025-07",
     "last_acknowledged_month": "2025-06",
-    "needs_switch": true
+    "needs_switch": true,
+    "earliest_month": "2025-03"
   },
   "error": null,
   "meta": null
@@ -191,8 +195,9 @@ Returns the server's current month and whether the user needs to acknowledge a m
 ```
 
 - `current_month`: derived from server date.
-- `last_acknowledged_month`: the last month the user confirmed. Stored in settings (see § settings).
+- `last_acknowledged_month`: the last month the user confirmed. Stored in settings (see § settings). This is the user's **working month**: Home and Budget operate on it, and History treats every earlier month as a previous month.
 - `needs_switch`: `true` when `current_month != last_acknowledged_month`.
+- `earliest_month`: the month of the oldest non-deleted transaction, or `null` if there are none. History offers months from `earliest_month` up to the month before `last_acknowledged_month`. If that range is empty, History shows "No previous months to show".
 
 ### POST /api/v1/current-month/switch
 
@@ -204,7 +209,8 @@ Acknowledges the month change. Updates `last_acknowledged_month` to match `curre
   "data": {
     "current_month": "2025-07",
     "last_acknowledged_month": "2025-07",
-    "needs_switch": false
+    "needs_switch": false,
+    "earliest_month": "2025-03"
   },
   "error": null,
   "meta": null
@@ -232,7 +238,9 @@ Returns all settings relevant to the current user: global settings merged with u
     "currency": "$",
     "language": "en",
     "theme": "dark",
-    "last_acknowledged_month": "2025-07"
+    "last_acknowledged_month": "2025-07",
+    "username": "admin",
+    "real_name": "Administrator"
   },
   "error": null,
   "meta": null
@@ -264,19 +272,26 @@ Updates one or more settings. The backend determines scope (global vs per-user) 
 ```
 
 **Error (403):** The setting requires admin and the current user is not admin.
-**Error (422):** Invalid value (e.g. currency string exceeds one grapheme cluster).
+**Error (409):** `username` is already taken (including by a soft-deleted user).
+**Error (422):** Invalid value (e.g. currency string exceeds one grapheme cluster), unknown key, or a read-only key.
 
 **Persistence requirement:** All settings changes must be written to the database. A page refresh must reflect the updated values. No setting may exist only in frontend state.
 
 **Setting scopes:**
 
-| key                      | scope    | requires_admin |
-|--------------------------|----------|----------------|
-| currency                 | global   | false          |
-| language                 | per-user | false          |
-| theme                    | per-user | false          |
-| last_acknowledged_month  | per-user | false          |
-| user_management          | global   | true           |
+| key                      | scope    | requires_admin | writable via PATCH |
+|--------------------------|----------|----------------|--------------------|
+| currency                 | global   | false          | yes                |
+| language                 | per-user | false          | yes                |
+| theme                    | per-user | false          | yes                |
+| username                 | profile  | false          | yes                |
+| real_name                | profile  | false          | yes                |
+| last_acknowledged_month  | per-user | false          | no (only via `POST /current-month/switch`) |
+
+- `profile` keys are the current user's own `username` and `real_name`. They are stored on the `users` table, not in `settings`. This is how the Profile screen changes them, without a separate endpoint ("profile belongs to settings"). `GET /settings` also returns them.
+- `language`: one of the shipped locales (`en`, `es`).
+- `theme`: one of `light`, `dark`, `system`.
+- User management is not a setting. It is gated by `is_admin` on `/settings/users` (§ 3.2).
 
 Currency changes affect all users. The frontend shows a confirmation dialog before calling this endpoint, but the backend does not enforce that confirmation.
 
@@ -286,7 +301,7 @@ All endpoints under this path require the admin role. Non-admin users receive `F
 
 #### GET /api/v1/settings/users
 
-Lists all users.
+Lists all non-deleted users.
 
 **Success (200):**
 ```json
@@ -370,12 +385,14 @@ Updates a user. Admin can change real_name, password, and is_admin for any user.
 }
 ```
 
+**Error (403):** Removing `is_admin` from the last remaining admin.
 **Error (404):** User not found.
+**Error (410):** User is soft-deleted. Message: "Record not available anymore."
 **Error (422):** Validation failure.
 
 #### DELETE /api/v1/settings/users/:id
 
-Deletes a user. Hard delete. Records created by this user retain the `user_id` foreign key; the frontend displays the username as it was at creation time (or a fallback if the user no longer exists).
+**Soft-deletes** a user. Sets `is_deleted = true` and invalidates all of that user's sessions. The row stays, so records keep a valid `user_id`. Their username resolves normally and is rendered with a faint "(deleted)" tag. A soft-deleted user cannot log in. Their username stays reserved and cannot be reused.
 
 **Success (200):**
 ```json
@@ -388,6 +405,7 @@ Deletes a user. Hard delete. Records created by this user retain the `user_id` f
 
 **Error (404):** User not found.
 **Error (403):** Attempting to delete the last admin, or attempting to delete oneself.
+**Error (410):** User already soft-deleted.
 
 ### 3.3 Concept Management
 
@@ -410,6 +428,7 @@ Lists concepts. Excludes soft-deleted by default.
       "name": "Groceries",
       "flow": "out",
       "created_by": "admin",
+      "created_by_is_deleted": false,
       "created_at": "2025-07-01T08:00:00Z",
       "is_deleted": false
     },
@@ -418,6 +437,7 @@ Lists concepts. Excludes soft-deleted by default.
       "name": "Salary",
       "flow": "in",
       "created_by": "admin",
+      "created_by_is_deleted": false,
       "created_at": "2025-07-01T08:00:00Z",
       "is_deleted": false
     }
@@ -426,6 +446,8 @@ Lists concepts. Excludes soft-deleted by default.
   "meta": null
 }
 ```
+
+Concepts are a small reference list. This endpoint is not paginated and returns the full list (`meta: null`). The Concepts grid filters it client-side. Pickers use the default (non-deleted) list. The Concepts screen uses `include_deleted=true` when the user asks to see deleted concepts. Those are rendered with a faint "(deleted)" tag.
 
 #### POST /api/v1/settings/concepts
 
@@ -455,7 +477,7 @@ Creates a concept.
 }
 ```
 
-**Error (409):** A concept with the same name and flow already exists.
+**Error (409):** A non-deleted concept with the same name and flow already exists. A soft-deleted concept's name can be reused.
 **Error (422):** Name exceeds 64 chars, invalid flow value, or empty name.
 
 #### PATCH /api/v1/settings/concepts/:id
@@ -486,6 +508,8 @@ Updates a concept. **Only the `name` field can be changed.** The `flow` field is
 ```
 
 **Error (404):** Concept not found.
+**Error (409):** Another non-deleted concept already has this name and flow.
+**Error (410):** Concept is soft-deleted. Message: "Record not available anymore."
 **Error (422):** Attempting to modify `flow`, or name exceeds 64 chars.
 
 **Renaming impact:** Renaming a concept affects all records that reference it, since records store `concept_id` and the name is resolved via the foreign key. The frontend must show a confirmation dialog before renaming.
@@ -493,6 +517,8 @@ Updates a concept. **Only the `name` field can be changed.** The `flow` field is
 #### DELETE /api/v1/settings/concepts/:id
 
 **Soft-deletes** a concept. Sets `is_deleted = true`. The concept remains in the database to preserve referential integrity with historical records. Soft-deleted concepts do not appear in the concept picker for new records.
+
+Referencing transactions and budgets are **not** mutated. Visibility is derived from the concept's state (see Business Logic § Concept Soft-Delete). The frontend warns before calling this that the concept's budget entries and current-month records will disappear.
 
 **Success (200):**
 ```json
@@ -504,6 +530,21 @@ Updates a concept. **Only the `name` field can be changed.** The `flow` field is
 ```
 
 **Error (404):** Concept not found.
+**Error (410):** Concept already soft-deleted.
+
+#### DELETE /api/v1/settings/concepts
+
+**Bulk soft-delete** for the multi-select delete on the Concepts screen. It uses a parameter on the collection path, so no new resource is added.
+
+**Query parameters:**
+- `ids` — required. Comma-separated concept ids, 1 to 100 ids.
+
+All-or-nothing: if any id fails, nothing is deleted.
+
+**Success (200):** `data: { "deleted": <count> }`
+**Error (404):** At least one id does not exist.
+**Error (410):** At least one id is already soft-deleted.
+**Error (422):** `ids` missing, malformed, empty, or more than 100.
 
 ---
 
@@ -521,9 +562,11 @@ Unified endpoint for both transactions and budgets. The `type` parameter and fie
   "concept_id": 3,
   "concept_name": "Groceries",
   "concept_flow": "out",
+  "concept_is_deleted": false,
   "amount": 45.50,
   "user_id": 1,
   "username": "admin",
+  "user_is_deleted": false,
   "created_at": "2025-07-15T10:30:00Z"
 }
 ```
@@ -531,6 +574,8 @@ Unified endpoint for both transactions and budgets. The `type` parameter and fie
 - For `type: "budget"`, `amount` may be `null` (a budget entry without a reserved amount).
 - For `type: "transaction"`, `amount` is always a number.
 - `concept_name` and `concept_flow` are resolved from the concepts table via `concept_id`.
+- `concept_is_deleted` and `user_is_deleted` let the frontend render the faint "(deleted)" tag (Business Logic § Concept Soft-Delete, § User Soft-Delete).
+- Soft-deleted records themselves are never returned by any endpoint.
 
 ### GET /api/v1/records
 
@@ -541,7 +586,7 @@ Lists records filtered by type, month, and optional search.
 | param    | required | description                                    |
 |----------|----------|------------------------------------------------|
 | type     | yes      | `transaction` or `budget`                      |
-| month    | yes      | `YYYY-MM` — filters by the record's `date`     |
+| month    | transaction only | `YYYY-MM` — filters transactions by `date`. Required for `type=transaction`. Ignored for `type=budget`. |
 | page     | no       | integer, default `1`                           |
 | q        | no       | `10`, `20`, `50`, or `all`. Default `10`       |
 | search   | no       | substring match against concept name           |
@@ -574,6 +619,12 @@ Lists records filtered by type, month, and optional search.
 ```
 
 **Filtering behavior:** Search and month filters are applied server-side. A filter on a given month will not return results from a different month. Results are sorted by `id` ascending (creation order). Sort order cannot be changed.
+
+**Budgets are a standing list.** `type=budget` returns every non-deleted budget whose concept is not deleted, regardless of the budget's `date`. The budget `date` is informational. It is never rewritten by the month switch. The frontend displays it in the working month (Business Logic § Month Switch).
+
+**Transactions: working month vs previous months.** The backend compares `month` with the requesting user's `last_acknowledged_month` (the working month):
+- `month` ≥ working month: records whose concept is soft-deleted are excluded.
+- `month` < working month (History): records whose concept is soft-deleted are included, with `concept_is_deleted: true`.
 
 ### POST /api/v1/records
 
@@ -623,11 +674,12 @@ Updates a record.
 Returns the updated record in standard record shape.
 
 **Error (404):** Record not found for the given id and type.
+**Error (410):** Record is soft-deleted, or its concept is soft-deleted. Message: "Record not available anymore."
 **Error (422):** Validation failure (same rules as POST).
 
 ### DELETE /api/v1/records/:id
 
-**Hard-deletes** a record. No soft delete, no undo.
+**Soft-deletes** a record (`is_deleted = true`). No undo and no restore UI. Soft delete exists for database consistency, not recovery. Physical removal is reserved for a future manual prune CLI.
 
 **Query parameters:**
 - `type` — required. `transaction` or `budget`.
@@ -642,6 +694,22 @@ Returns the updated record in standard record shape.
 ```
 
 **Error (404):** Record not found.
+**Error (410):** Record already soft-deleted.
+
+### DELETE /api/v1/records
+
+**Bulk soft-delete** for the multi-select delete on Home and Budget. It uses a parameter on the collection path, so no new resource is added.
+
+**Query parameters:**
+- `type` — required. `transaction` or `budget`.
+- `ids` — required. Comma-separated record ids, 1 to 100 ids.
+
+All-or-nothing: if any id fails, nothing is deleted.
+
+**Success (200):** `data: { "deleted": <count> }`
+**Error (404):** At least one id does not exist for the given type.
+**Error (410):** At least one id is already soft-deleted.
+**Error (422):** `type` or `ids` missing, malformed, empty, or more than 100.
 
 ---
 
@@ -699,8 +767,9 @@ If the user later changes their password back to the default, the condition re-t
 Computed on-the-fly. No cached or stored projection values.
 
 **Inputs:**
-- All budget entries (budgets persist across months; they are not filtered by month).
-- All transactions in the target month.
+- All non-deleted budget entries whose concept is not deleted. Budgets persist across months and are not filtered by month.
+- All non-deleted transactions in the target month. Transactions whose concept is soft-deleted are excluded when the target month is the working month (or later). They are **included** when it is a previous month, because previous months stay intact (BACKEND.md § 1.2). Their concept's budgets are excluded, so they count as unbudgeted activity.
+- A budget entry with `amount = null` counts as `0`.
 
 **Algorithm:**
 
@@ -738,11 +807,17 @@ savings_projection = earn_projection - spend_projection
 The month switch is a state signal, not a data operation.
 
 - No transactions are archived, moved, or modified.
-- No budget dates are altered. Budget dates are informational.
+- No budget dates are altered. Budget dates are informational. The frontend displays each budget date inside the working month, keeping the stored day and clamping to the month's last day (31 → 30, 29 → 28). The stored day is never lost, so there is no drift (Jan 31 → Feb 28 → Mar 31).
 - No budget amounts are reset. Budget entries persist across months.
 - The only change: `last_acknowledged_month` in settings is updated to match the current month.
 - The "reset" perceived by the user is natural: the new month has no transactions yet, so `actual_spend` and `actual_earn` start at zero. Budget amounts remain, so projections immediately reflect the budget baseline.
 - History is simply a query for transactions in a past month. No separate storage or archiving.
+
+### Soft-Delete (All Entities)
+
+- Users, concepts, transactions and budgets are soft-deleted (`is_deleted = true`). Nothing is hard-deleted through the API. A manual prune CLI is deferred.
+- A soft-deleted record is never returned by any endpoint and never counts in projections.
+- Any `PATCH` or `DELETE` on a soft-deleted target returns `410 GONE` with "Record not available anymore." This is the edit-vs-delete race outcome. Otherwise, last write wins.
 
 ### Concept Soft-Delete
 
@@ -751,6 +826,17 @@ The month switch is a state signal, not a data operation.
 - Soft-deleted concepts are excluded from the concept picker when creating new records.
 - Soft-deleted concepts still resolve their name and flow when displaying historical records.
 - To change a concept's flow, the user must delete it (soft) and create a new concept with the desired flow.
+- No data cascade. Referencing records keep `is_deleted = false`. Their visibility is derived:
+  - Budget screen: budgets of a deleted concept disappear and stop counting in projections.
+  - Working month (Home): transactions of a deleted concept disappear and stop counting.
+  - Previous months (History): transactions of a deleted concept stay visible with a faint "(deleted)" tag and keep counting.
+- Records of a deleted concept cannot be edited or deleted (`410`).
+
+### User Soft-Delete
+
+- A soft-deleted user cannot log in, and all of their sessions are invalidated.
+- Their records keep `user_id`. The username is rendered with a faint "(deleted)" tag (`user_is_deleted`).
+- Their username stays reserved.
 
 ### Settings Persistence
 
@@ -770,6 +856,7 @@ users
   password_hash   NOT NULL
   is_admin        BOOLEAN DEFAULT false
   created_at      TIMESTAMP
+  is_deleted      BOOLEAN DEFAULT false
 
 concepts
   id              PK
@@ -786,6 +873,7 @@ transactions
   amount          DECIMAL(10,2) NOT NULL
   user_id         FK → users.id
   created_at      TIMESTAMP
+  is_deleted      BOOLEAN DEFAULT false
 
 budgets
   id              PK
@@ -794,6 +882,7 @@ budgets
   amount          DECIMAL(10,2) NULL
   user_id         FK → users.id
   created_at      TIMESTAMP
+  is_deleted      BOOLEAN DEFAULT false
 
 settings
   id              PK
@@ -827,15 +916,17 @@ settings
 | GET    | /api/v1/settings/users          | admin  | List users                     |
 | POST   | /api/v1/settings/users          | admin  | Create user                    |
 | PATCH  | /api/v1/settings/users/:id      | admin  | Update user                    |
-| DELETE | /api/v1/settings/users/:id      | admin  | Delete user (hard)             |
+| DELETE | /api/v1/settings/users/:id      | admin  | Soft-delete user               |
 | GET    | /api/v1/settings/concepts       | yes    | List concepts                  |
 | POST   | /api/v1/settings/concepts       | yes    | Create concept                 |
 | PATCH  | /api/v1/settings/concepts/:id   | yes    | Rename concept (flow immutable)|
 | DELETE | /api/v1/settings/concepts/:id   | yes    | Soft-delete concept            |
+| DELETE | /api/v1/settings/concepts?ids=  | yes    | Bulk soft-delete (max 100)     |
 | GET    | /api/v1/records                 | yes    | List records (type + month)    |
 | POST   | /api/v1/records                 | yes    | Create record                  |
 | PATCH  | /api/v1/records/:id             | yes    | Update record                  |
-| DELETE | /api/v1/records/:id             | yes    | Hard-delete record             |
+| DELETE | /api/v1/records/:id             | yes    | Soft-delete record             |
+| DELETE | /api/v1/records?type=&ids=      | yes    | Bulk soft-delete (max 100)     |
 | GET    | /api/v1/projections             | yes    | Computed projections for month |
 
-**Total: 21 endpoints.**
+**Total: 23 endpoints.**

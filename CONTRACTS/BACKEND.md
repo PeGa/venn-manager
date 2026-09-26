@@ -5,7 +5,9 @@ This document defines the internal rules, state transitions, and computational l
 ## 1. State & Lifecycle Mechanics
 
 ### 1.1 Soft-Delete Reality
-Everything (Users, Concepts, Transactions, Budgets) uses logical deletion (`is_deleted = true`). Hard deletion is reserved for a future manual prune CLI.
+Everything (Users, Concepts, Transactions, Budgets) uses logical deletion (`is_deleted = true`). Hard deletion is reserved for a future manual prune CLI (deferred).
+
+Soft deletion exists for database consistency, not recovery. A soft-deleted record disappears from every view and every projection. There is no trash, restore, or undo.
 
 **The Golden Rule of Deletion:** A record's `is_deleted` flag only ever reflects if *that specific record* was deleted. It does not reflect the state of its parent concept.
 
@@ -15,16 +17,26 @@ When a user soft-deletes a Concept:
 2. The Concept vanishes from all pickers/dropdowns.
 3. **No cascade occurs.** Transactions and Budgets referencing this concept are *not* mutated. Their `is_deleted` remains `false`.
 
+This yields the UI agreed in Phase 3 without mutating records. Concept deleted → its budget is gone → its working-month transactions are gone. Previous months stay intact and marked.
+
 **How the UI handles Ghost Concepts:**
-- **Current Month (Home/Budget):** The backend query for the current month explicitly filters out records where `concept.is_deleted = true`. The records vanish from the grid.
-- **History (Past Months):** The backend query does *not* filter by concept deletion. The records remain visible. The frontend detects `concept.is_deleted = true` and renders the concept name faintly with a "(deleted)" suffix.
-- **Projections:** The projection engine ignores any record where `concept.is_deleted = true`.
+- **Working Month (Home/Budget):** Queries for the working month (§ 1.4) and the budget list filter out records where `concept.is_deleted = true`. The records vanish from the grid.
+- **History (Previous Months):** The backend query does *not* filter by concept deletion. The transactions remain visible. The frontend detects `concept_is_deleted = true` and renders the concept name with a fainter "(deleted)" suffix. The suffix marks a state and is not part of the name.
+- **Projections:** Budgets of a deleted concept never count. That concept's transactions do not count for the working month. For previous months they still count, as unbudgeted activity, so history is not rewritten retroactively.
+- **Edits:** Records of a deleted concept cannot be edited or deleted. The backend returns `410` "Record not available anymore."
+- **Confirmation:** The frontend confirmation dialog for concept deletion warns that the concept's budget entries and working-month records will disappear.
 
 ### 1.3 Concurrency & "Last Write Wins"
 The app assumes high trust and low concurrent write volume. 
 - If User A and User B edit the same record, the last `PATCH` request overwrites the first. No optimistic locking.
 - If User A is editing a record, and User B deletes it (soft), User A's subsequent `PATCH` will fail.
-- **Error handling:** The backend checks `is_deleted` before executing an update. If `true`, it returns HTTP 410 Gone with the message: `"Record not available anymore."`
+- **Error handling:** The backend checks `is_deleted` before executing an update or delete. If `true`, it returns HTTP 410 Gone with the message: `"Record not available anymore."` The frontend discards local edits, refreshes the grid, and shows the message.
+
+### 1.4 The Working Month
+Each user's working month is their `last_acknowledged_month`.
+- Home and Budget operate on the working month. Until the user switches, they stay on it even if the calendar has moved on.
+- History covers months strictly before the working month.
+- The backend uses the requesting user's working month to decide between working-month and history semantics (§ 1.2).
 
 ## 2. The Projection Engine
 
@@ -33,7 +45,7 @@ Projections are computed on-the-fly per request. No values are cached or stored 
 ### 2.1 Data Inclusion Rules
 The engine only considers records where:
 1. `record.is_deleted = false`
-2. `concept.is_deleted = false`
+2. `concept.is_deleted = false`. Exception: transactions in a month before the working month are kept even if their concept is deleted (§ 1.2).
 3. The record's `date` falls within the target `month` (for transactions) or is an active budget (budgets persist, but their amounts are evaluated against the target month's transactions).
 
 ### 2.2 The Math (Per Concept)
@@ -67,6 +79,8 @@ When `POST /api/v1/current-month/switch` is called:
 1. The backend updates the `last_acknowledged_month` setting for the current user to match the server's current month.
 2. **No records are modified.** No transactions are archived. No budget dates are bumped. No budget amounts are reset.
 3. The "reset" the user perceives is purely a side-effect of the new month having zero transactions, while the budget entries (which persist) immediately establish the new baseline for projections.
+4. Budget dates are informational. The Budget grid displays each stored date inside the working month. It keeps the stored day and clamps to the month's last day (31 → 30, 29 → 28). This is a display transform only, so the stored day never drifts.
+5. The frontend polls `GET /api/v1/current-month`. When `needs_switch` is true, it offers the switch dialog. If the user declines, a "Switch to current month" button appears on the Home and Budget grids.
 
 ## 4. Seeding & Bootstrap
 
@@ -76,7 +90,8 @@ On the very first run (first migration), the database is seeded with the followi
 - One user created.
 - `username`: `admin`
 - `real_name`: `Administrator`
-- `password`: `admin` (hashed via the backend's standard password hasher, e.g., bcrypt/argon2).
+- `password`: `admin` (hashed with werkzeug `generate_password_hash`, default pbkdf2, per AGENTS.md).
+- Username and password are read from `DEFAULT_ADMIN_USERNAME` / `DEFAULT_ADMIN_PASSWORD`, which default to `admin` / `admin`.
 - `is_admin`: `true`
 
 ### 4.2 Settings
@@ -101,5 +116,11 @@ On the very first run (first migration), the database is seeded with the followi
 
 ### 5.3 User Management
 - An admin cannot delete themselves.
-- An admin cannot delete the last remaining admin user.
+- An admin cannot delete the last remaining admin user, nor remove `is_admin` from them.
 - When a user is soft-deleted, their `is_deleted` flips to `true`. Their historical records retain the `user_id`. The frontend resolves the username and renders it faintly or with a "(deleted)" tag.
+- A soft-deleted user cannot log in, their sessions are invalidated, and their username stays reserved.
+- Each user edits their own `username` and `real_name` through `PATCH /api/v1/settings` (profile keys).
+
+### 5.4 Bulk Deletion
+- Multi-select delete uses `DELETE /api/v1/records?type=&ids=` and `DELETE /api/v1/settings/concepts?ids=`.
+- A request accepts at most 100 ids. It is all-or-nothing: any missing id → 404, any already-deleted id → 410.

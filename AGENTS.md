@@ -15,8 +15,9 @@ Venn Manager is a shared-wallet finance manager for trusted groups (couples, roo
 - Database: SQLite for development, PostgreSQL-compatible for production
 
 **Contracts:**
-- `CONTRACTS/FRONTEND.md` — defines all frontend behavior
-- `CONTRACTS/BACKEND.md` — defines all API behavior, data models, business logic, auth, and security
+- `CONTRACTS/FRONTEND.md` — Phase 1: frontend behavior
+- `CONTRACTS/API_SURFACE.md` — Phase 2: API ports (endpoints, request/response shapes, envelope, error codes, reference schema)
+- `CONTRACTS/BACKEND.md` — Phase 3: business logic and domain rules (soft delete, projections, month switch, seeding)
 
 These contracts are the source of truth. If code and contract disagree, the contract wins. If you believe the contract is wrong, flag it. Do not silently deviate.
 
@@ -59,7 +60,7 @@ These contracts are the source of truth. If code and contract disagree, the cont
 - Use the pattern: `test_<function_or_endpoint>_<scenario>_<expected_outcome>`
 - Examples:
   - `test_create_record_with_valid_data_returns_201`
-  - `test_create_record_with_deleted_concept_returns_400`
+  - `test_create_record_with_deleted_concept_returns_422`
   - `test_projection_calculation_with_overspent_budget_uses_actual_amount`
 
 ### TDD Cycle
@@ -84,14 +85,14 @@ This is a finance application. Security is not optional. Every agent must treat 
 - Session cookies must be set with `HttpOnly=True`, `Secure=True` (in production), and `SameSite=Lax`.
 - The `SECRET_KEY` must be loaded from an environment variable. Never hardcode it. Never commit it.
 - Password hashing must use `werkzeug.security` (generate_password_hash / check_password_hash) with the default method (pbkdf2). Do not use MD5, SHA1, or unsalted hashes.
-- The `must_change_password` flag must be enforced server-side on every authenticated request, not just client-side.
+- The `must_change_password` condition is not a stored flag. It is derived at login (API_SURFACE.md § Force Password Change), kept in the server-side session, and enforced server-side on every authenticated request, not just client-side.
 - Logout must invalidate the session server-side, not just clear the cookie client-side.
 
 ### API Abuse Prevention
 - All endpoints must validate and sanitize input. Never trust request data.
 - Type validation is mandatory: check types, lengths, ranges, and allowed values before processing.
-- The `DELETE /api/users/:id` endpoint must prevent deletion of the last admin user. This is a hard constraint.
-- Bulk delete endpoints (`/api/records/bulk`, `/api/concepts/bulk`) must cap the number of IDs accepted per request (max 100). Requests exceeding this return `400 Bad Request`.
+- The `DELETE /api/v1/settings/users/:id` endpoint must prevent deletion of the last admin user and self-deletion. `PATCH` must prevent removing `is_admin` from the last admin. These are hard constraints.
+- Bulk delete endpoints (`DELETE /api/v1/records?type=&ids=`, `DELETE /api/v1/settings/concepts?ids=`) must cap the number of IDs accepted per request (max 100). Requests exceeding this return `422 VALIDATION_ERROR`.
 - Rate limiting is not currently implemented, but all endpoints must be structured to support it in the future (no side effects in GET requests).
 
 ### Input Validation
@@ -122,18 +123,19 @@ This is a finance application. Security is not optional. Every agent must treat 
 ## Architecture Constraints
 
 ### Contract Compliance
-- The frontend and backend contracts are the single source of truth for behavior.
+- The three contracts (FRONTEND, API_SURFACE, BACKEND) are the single source of truth for behavior.
 - Do not add features, endpoints, fields, or behaviors not described in the contracts.
 - Do not remove or modify contract-defined behavior without explicit approval.
 - If a contract gap is discovered during implementation, document it and propose a contract amendment. Do not invent a solution silently.
 
 ### What NOT to Do
 - **Do not** add JWT, bearer tokens, or API keys. Auth is session-based. Period.
-- **Do not** add soft delete to `Transaction` or `Budget` records. Only `Concept` uses soft delete.
-- **Do not** add pagination unless the contract is amended to require it.
+- **Do not** hard-delete through the API. Users, concepts, transactions and budgets are all soft-deleted (`is_deleted`). Physical removal is reserved for a future manual prune CLI.
+- **Do not** add trash, restore, or undo for soft-deleted records. Soft delete exists for consistency, not recovery.
+- **Do not** add pagination beyond what the contract defines: record lists use `page` + `q` (`10`, `20`, `50`, `all`). Concepts and users lists are not paginated.
 - **Do not** add WebSocket or SSE. The frontend polls for month changes.
 - **Do not** add multi-currency support, currency conversion, or locale-aware number formatting.
-- **Do not** add audit trails, versioning, or undo functionality.
+- **Do not** add audit trails or versioning.
 - **Do not** add email notifications, password recovery emails, or any external communication.
 - **Do not** introduce a frontend framework other than Preact. No React, no Vue, no Svelte.
 - **Do not** add a state management library (Redux, MobX, Zustand) unless the contract requires it. Use Preact signals, context, or component-local state.
@@ -197,6 +199,7 @@ venn-manager/
 │   └── package.json
 ├── CONTRACTS/
 │   ├── FRONTEND.md
+│   ├── API_SURFACE.md
 │   └── BACKEND.md
 ├── docs/
 ├── AGENTS.md
@@ -267,7 +270,7 @@ venn-manager/
 
 - Prevent N+1 queries. Use SQLAlchemy's `joinedload` or `selectinload` for relationships accessed in loops.
 - Add database indexes on: `Transaction.date`, `Transaction.concept_id`, `Budget.date`, `Budget.concept_id`, `Concept.name`.
-- API list endpoints must not return more than 1000 records per request. If the dataset grows beyond this, pagination must be added via contract amendment.
+- Paginated list endpoints return at most 50 records per page. `q=all` is the explicit user-requested exception defined in API_SURFACE.md. Do not add other unbounded list endpoints.
 - Frontend must not re-fetch data on every component render. Use `@tanstack/preact-query` caching with appropriate `staleTime`.
 - Avoid loading all records into memory for projection calculations. Use database aggregation (`SUM`, `GROUP BY`) where possible.
 
@@ -288,10 +291,11 @@ venn-manager/
 ## Error Handling Patterns
 
 ### Backend
-- All API errors must return the shape defined in the backend contract:
+- Every API response, success or error, uses the envelope defined in API_SURFACE.md:
   ```json
-  { "error": "ERROR_CODE", "detail": "Human-readable description" }
+  { "data": null, "error": { "code": "ERROR_CODE", "message": "Human-readable description" }, "meta": null }
   ```
+- Error codes and statuses are the ones in API_SURFACE.md (e.g. `422 VALIDATION_ERROR` for invalid input, `410 GONE` for soft-deleted targets).
 - Never expose stack traces, SQL queries, or internal paths in error responses.
 - Log full error details server-side. Return sanitized messages to the client.
 - Use HTTP status codes correctly. Do not return `200 OK` with an error body.
