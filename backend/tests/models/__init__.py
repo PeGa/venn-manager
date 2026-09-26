@@ -1,1 +1,0 @@
-"""Model test package."""
