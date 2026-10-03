@@ -87,7 +87,7 @@ function MenuBar(props: { title: string; signedInAs: string }) {
     if (event.key === "Escape") setOpen(false);
   };
   document.addEventListener("keydown", onKey);
-  onCleanup(() => { document.removeEventListener("keydown", onKey); });
+  onCleanup(() => document.removeEventListener("keydown", onKey));
   const go = (path: string) => {
     setOpen(false);
     navigate(path);
@@ -118,7 +118,7 @@ function MenuBar(props: { title: string; signedInAs: string }) {
             {(item) => (
               <button
                 type="button"
-                onClick={() => { go(item.path); }}
+                onClick={() => go(item.path)}
                 class="h-12 rounded-xl px-3.5 text-left text-[15px] font-semibold"
                 classList={{ "bg-primary text-white": location.pathname === item.path }}
               >
@@ -126,7 +126,7 @@ function MenuBar(props: { title: string; signedInAs: string }) {
               </button>
             )}
           </For>
-          <button type="button" onClick={() => { go("/profile"); }} class="h-12 rounded-xl border-t border-hairline px-3.5 text-left text-sm text-muted">
+          <button type="button" onClick={() => go("/profile")} class="h-12 rounded-xl border-t border-hairline px-3.5 text-left text-sm text-muted">
             {t("signed_in_as", { name: props.signedInAs })}
           </button>
         </div>

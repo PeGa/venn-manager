@@ -64,7 +64,7 @@ describe("session gate", () => {
     state.session!.mustChangePassword = true;
     renderApp(api);
     fireEvent.click(await screen.findByRole("button", { name: "Log out" }));
-    await waitFor(() => { expect(api.logout).toHaveBeenCalled(); });
+    await waitFor(() => expect(api.logout).toHaveBeenCalled());
     expect(await screen.findByRole("heading", { name: "Sign in" })).toBeTruthy();
   });
 

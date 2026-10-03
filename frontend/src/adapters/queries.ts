@@ -39,7 +39,7 @@ export type QueryErrorHook = (error: unknown, queryKey: readonly unknown[]) => v
 export function createQueryClient(onError?: QueryErrorHook): QueryClient {
   return new QueryClient({
     queryCache: new QueryCache(
-      onError === undefined ? {} : { onError: (error, query) => { onError(error, query.queryKey); } },
+      onError === undefined ? {} : { onError: (error, query) => onError(error, query.queryKey) },
     ),
     defaultOptions: {
       queries: {

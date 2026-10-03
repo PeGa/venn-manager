@@ -37,7 +37,7 @@ function applyTheme(theme: Theme) {
   };
   apply();
   dark.addEventListener("change", apply);
-  onCleanup(() => { dark.removeEventListener("change", apply); });
+  onCleanup(() => dark.removeEventListener("change", apply));
 }
 
 function Gate() {

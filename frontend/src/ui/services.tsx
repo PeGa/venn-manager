@@ -50,7 +50,7 @@ function media(query: string): Accessor<boolean> {
   const [matches, setMatches] = createSignal(list.matches);
   const update = (event: MediaQueryListEvent) => setMatches(event.matches);
   list.addEventListener("change", update);
-  onCleanup(() => { list.removeEventListener("change", update); });
+  onCleanup(() => list.removeEventListener("change", update));
   return matches;
 }
 
@@ -71,7 +71,7 @@ export function createServices(
   const api = makeApi({ onRevision: setRevision, onReachable: (ok) => setOffline(!ok) });
   const [highlighted, setHighlighted] = createSignal<string | null>(null);
   let timer: ReturnType<typeof setTimeout> | undefined;
-  onCleanup(() => { clearTimeout(timer); });
+  onCleanup(() => clearTimeout(timer));
   return {
     api,
     language,

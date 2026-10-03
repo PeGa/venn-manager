@@ -8,6 +8,10 @@ export default tseslint.config(
     languageOptions: {
       parserOptions: { projectService: true, tsconfigRootDir: import.meta.dirname },
     },
+    rules: {
+      // `() => doThing()` in handlers is idiomatic; keep the rule for everything else.
+      "@typescript-eslint/no-confusing-void-expression": ["error", { ignoreArrowShorthand: true }],
+    },
   },
   { files: ["src/**/*.tsx", "tests/**/*.tsx"], ...solid },
   {

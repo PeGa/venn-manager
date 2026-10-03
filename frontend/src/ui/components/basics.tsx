@@ -97,7 +97,7 @@ export function Chip(props: ParentProps<{ active: boolean; onClick: () => void; 
     <button
       type="button"
       aria-pressed={props.active}
-      onClick={() => { props.onClick(); }}
+      onClick={() => props.onClick()}
       class="flex-none rounded-chip border border-input-border px-3 py-1.5 text-xs font-semibold"
       classList={{
         "bg-primary text-white": props.active,
@@ -149,7 +149,7 @@ export function Notice(props: ParentProps<{ onDismiss?: () => void; action?: JSX
       {props.action}
       <Show when={props.onDismiss}>
         {(dismiss) => (
-          <button type="button" aria-label="×" class="text-lg leading-none" onClick={() => { dismiss()(); }}>
+          <button type="button" aria-label="×" class="text-lg leading-none" onClick={() => dismiss()()}>
             ×
           </button>
         )}

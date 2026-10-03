@@ -1,4 +1,6 @@
-/** Placeholder until the Budget screen is built. */
+/** Budget (FRONTEND.md § 5.2): every non-goal budget, then a link to add more. */
+import { AddConceptLink, BudgetList } from "@/ui/screens/BudgetList";
+
 export function BudgetScreen() {
-  return null;
+  return <BudgetList goals={false} trailing={<AddConceptLink />} />;
 }
