@@ -83,6 +83,10 @@ class MemberRepository(Protocol):
         """Every member, removed ones included, in creation order."""
         ...
 
+    def get_many(self, member_ids: set[UUID]) -> dict[UUID, Member]:
+        """Members by id, removed ones included. Unknown ids are absent."""
+        ...
+
     def active_admin_count(self) -> int:
         """How many active members are admins."""
         ...
@@ -123,6 +127,10 @@ class BudgetRepository(Protocol):
         """Non-deleted budgets in creation order."""
         ...
 
+    def get_many(self, budget_ids: set[UUID]) -> dict[UUID, Budget]:
+        """Budgets by id, deleted ones included. Unknown ids are absent."""
+        ...
+
     def name_taken(self, name: str, except_id: UUID | None = None) -> bool:
         """Whether a non-deleted budget other than *except_id* uses *name*.
 
@@ -142,8 +150,30 @@ class TransactionRepository(Protocol):
         """The transaction with *transaction_id* and its budget, deleted or not."""
         ...
 
+    def get_many(self, transaction_ids: set[UUID]) -> dict[UUID, Transaction]:
+        """Transactions by id, deleted ones included. Unknown ids are absent."""
+        ...
+
     def add(self, transaction: Transaction) -> None:
         """Store a new transaction."""
+        ...
+
+    def net_before(self, day: date) -> int:
+        """Signed sum of counted transactions dated before *day*."""
+        ...
+
+    def counted_between(self, start: date, end: date) -> int:
+        """How many counted transactions fall between the dates."""
+        ...
+
+    def flows(self, start: date, end: date) -> tuple[int, int]:
+        """Counted money in and money out between the dates, both positive."""
+        ...
+
+    def income_by_member(
+        self, start: date | None = None, end: date | None = None
+    ) -> dict[UUID, int]:
+        """Counted positive amounts per member, optionally between the dates."""
         ...
 
     def page(
@@ -177,6 +207,14 @@ class ActivityRepository(Protocol):
 
     def newest(self) -> Activity | None:
         """The most recent entry, if any."""
+        ...
+
+    def page(self, offset: int, limit: int) -> list[Activity]:
+        """Entries newest first."""
+        ...
+
+    def count(self) -> int:
+        """How many entries exist."""
         ...
 
 

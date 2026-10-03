@@ -85,6 +85,12 @@ class SqlMembers:
     def all(self) -> list[Member]:
         return list(self.db.scalars(select(Member).order_by(users.c.created_at)))
 
+    def get_many(self, member_ids: set[UUID]) -> dict[UUID, Member]:
+        if not member_ids:
+            return {}
+        found = self.db.scalars(select(Member).where(users.c.id.in_(member_ids)))
+        return {member.id: member for member in found}
+
     def active_admin_count(self) -> int:
         count = self.db.scalar(
             select(func.count())
@@ -147,6 +153,12 @@ class SqlBudgets:
             )
         )
 
+    def get_many(self, budget_ids: set[UUID]) -> dict[UUID, Budget]:
+        if not budget_ids:
+            return {}
+        found = self.db.scalars(select(Budget).where(budgets.c.id.in_(budget_ids)))
+        return {budget.id: budget for budget in found}
+
     def name_taken(self, name: str, except_id: UUID | None = None) -> bool:
         statement = select(budgets.c.id).where(
             budgets.c.is_deleted.is_(False),
@@ -174,8 +186,55 @@ class SqlTransactions:
         ).first()
         return None if row is None else (row[0], row[1])
 
+    def get_many(self, transaction_ids: set[UUID]) -> dict[UUID, Transaction]:
+        if not transaction_ids:
+            return {}
+        found = self.db.scalars(
+            select(Transaction).where(transactions.c.id.in_(transaction_ids))
+        )
+        return {transaction.id: transaction for transaction in found}
+
     def add(self, transaction: Transaction) -> None:
         self.db.add(transaction)
+
+    def _sum(self, *conditions: ColumnElement[bool]) -> int:
+        total = self.db.scalar(
+            select(func.sum(transactions.c.amount))
+            .join(budgets, budgets.c.id == transactions.c.budget_id)
+            .where(counted(), *conditions)
+        )
+        return int(total or 0)
+
+    def net_before(self, day: date) -> int:
+        return self._sum(transactions.c.date < day)
+
+    def counted_between(self, start: date, end: date) -> int:
+        total = self.db.scalar(
+            select(func.count())
+            .select_from(transactions)
+            .join(budgets, budgets.c.id == transactions.c.budget_id)
+            .where(counted(), transactions.c.date.between(start, end))
+        )
+        return int(total or 0)
+
+    def flows(self, start: date, end: date) -> tuple[int, int]:
+        between = transactions.c.date.between(start, end)
+        money_in = self._sum(between, transactions.c.amount > 0)
+        money_out = self._sum(between, transactions.c.amount < 0)
+        return money_in, -money_out
+
+    def income_by_member(
+        self, start: date | None = None, end: date | None = None
+    ) -> dict[UUID, int]:
+        statement = (
+            select(transactions.c.member_id, func.sum(transactions.c.amount))
+            .join(budgets, budgets.c.id == transactions.c.budget_id)
+            .where(counted(), transactions.c.amount > 0)
+            .group_by(transactions.c.member_id)
+        )
+        if start is not None and end is not None:
+            statement = statement.where(transactions.c.date.between(start, end))
+        return {member: int(total) for member, total in self.db.execute(statement)}
 
     def page(
         self, start: date, end: date, offset: int, limit: int
@@ -240,6 +299,20 @@ class SqlActivity:
         return self.db.scalars(
             select(Activity).order_by(activity.c.at.desc()).limit(1)
         ).first()
+
+    def page(self, offset: int, limit: int) -> list[Activity]:
+        return list(
+            self.db.scalars(
+                select(Activity)
+                .order_by(activity.c.at.desc())
+                .offset(offset)
+                .limit(limit)
+            )
+        )
+
+    def count(self) -> int:
+        total = self.db.scalar(select(func.count()).select_from(activity))
+        return int(total or 0)
 
 
 class SqlUnitOfWork:

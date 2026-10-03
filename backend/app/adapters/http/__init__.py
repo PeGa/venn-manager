@@ -8,6 +8,7 @@ from app.adapters.http import (
     household,
     me,
     members,
+    overview,
     transactions,
 )
 
@@ -18,4 +19,5 @@ routers: list[APIRouter] = [
     members.router,
     budgets.router,
     transactions.router,
+    overview.router,
 ]
