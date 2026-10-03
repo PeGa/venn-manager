@@ -39,13 +39,7 @@ def create_app(
     if settings is None:
         load_dotenv(Path(".env"))
         settings = settings_from_env()
-    production = settings.app_env == "production"
-    app = FastAPI(
-        title="Venn Manager",
-        openapi_url=None if production else "/api/openapi.json",
-        docs_url=None if production else "/api/docs",
-        redoc_url=None,
-    )
+    app = _fastapi(settings)
     app.state.settings = settings
     app.state.sessionmaker = sessionmaker(
         engine or make_engine(settings.database_url), expire_on_commit=False
@@ -59,6 +53,17 @@ def create_app(
     for router in routers:
         app.include_router(router, prefix="/api/v1")
     return app
+
+
+def _fastapi(settings: Settings) -> FastAPI:
+    """The bare FastAPI app. Interactive docs only outside production."""
+    production = settings.app_env == "production"
+    return FastAPI(
+        title="Venn Manager",
+        openapi_url=None if production else "/api/openapi.json",
+        docs_url=None if production else "/api/docs",
+        redoc_url=None,
+    )
 
 
 async def _require_json(request: Request, call_next: Handler) -> Response:

@@ -2,9 +2,15 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
+from typing import TYPE_CHECKING
 
 from fastapi.testclient import TestClient
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
+
+    from app.domain.entities import Transaction
 
 JSON = {"Content-Type": "application/json"}
 ADMIN_PASSWORD = "admin-password"
@@ -65,4 +71,52 @@ def add_member(
     )
     assert response.status_code == 201, response.json()
     body: dict[str, object] = response.json()
+    return body
+
+
+def insert_transaction(
+    db: Session,
+    budget_id: str,
+    amount: int,
+    day: date,
+    *,
+    payee: str = "Payee",
+    deleted: bool = False,
+) -> Transaction:
+    """Store a transaction directly, bypassing the API's period rules."""
+    from datetime import UTC, datetime
+    from uuid import UUID
+
+    from sqlalchemy import select
+
+    from app.domain.entities import Member, Transaction
+
+    member = db.scalars(select(Member)).first()
+    assert member is not None
+    moment = datetime(day.year, day.month, day.day, 12, tzinfo=UTC)
+    transaction = Transaction(
+        payee=payee,
+        budget_id=UUID(budget_id),
+        amount=amount,
+        member_id=member.id,
+        date=day,
+        created_by=member.id,
+        created_at=moment,
+        updated_at=moment,
+        is_deleted=deleted,
+    )
+    db.add(transaction)
+    db.commit()
+    return transaction
+
+
+def add_budget(client: TestClient, name: str, amount: int = 0) -> dict[str, object]:
+    """Create a budget through the API and optionally set its amount."""
+    response = client.post("/api/v1/budgets", json={"name": name})
+    assert response.status_code == 201, response.json()
+    body: dict[str, object] = response.json()
+    if amount:
+        body = client.patch(
+            f"/api/v1/budgets/{body['id']}", json={"amount": amount}
+        ).json()
     return body

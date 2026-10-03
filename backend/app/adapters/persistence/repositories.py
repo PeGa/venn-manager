@@ -25,7 +25,7 @@ from app.adapters.persistence.tables import (
     transactions,
     users,
 )
-from app.domain.entities import Activity, Household, LoginSession, Member
+from app.domain.entities import Activity, Budget, Household, LoginSession, Member
 
 
 def make_engine(url: str, **kwargs: Any) -> Engine:
@@ -122,11 +122,51 @@ class SqlSessions:
         self.db.execute(statement)
 
 
+class SqlBudgets:
+    """`BudgetRepository` over the `budgets` table."""
+
+    def __init__(self, db: Session) -> None:
+        self.db = db
+
+    def get(self, budget_id: UUID) -> Budget | None:
+        return self.db.get(Budget, budget_id)
+
+    def active(self) -> list[Budget]:
+        return list(
+            self.db.scalars(
+                select(Budget)
+                .where(budgets.c.is_deleted.is_(False))
+                .order_by(budgets.c.created_at)
+            )
+        )
+
+    def name_taken(self, name: str, except_id: UUID | None = None) -> bool:
+        statement = select(budgets.c.id).where(
+            budgets.c.is_deleted.is_(False),
+            func.lower(budgets.c.name) == name.lower(),
+        )
+        if except_id is not None:
+            statement = statement.where(budgets.c.id != except_id)
+        return self.db.scalar(statement.limit(1)) is not None
+
+    def add(self, budget: Budget) -> None:
+        self.db.add(budget)
+
+
 class SqlTransactions:
     """`TransactionRepository` over the `transactions` table."""
 
     def __init__(self, db: Session) -> None:
         self.db = db
+
+    def actual_by_budget(self, start: date, end: date) -> dict[UUID, int]:
+        rows = self.db.execute(
+            select(transactions.c.budget_id, func.sum(transactions.c.amount))
+            .join(budgets, budgets.c.id == transactions.c.budget_id)
+            .where(counted(), transactions.c.date.between(start, end))
+            .group_by(transactions.c.budget_id)
+        ).all()
+        return {budget_id: int(total) for budget_id, total in rows}
 
     def spent_by_member(self, start: date, end: date) -> dict[UUID, int]:
         rows = self.db.execute(
@@ -165,6 +205,7 @@ class SqlUnitOfWork:
         self.household = SqlHouseholds(db)
         self.members = SqlMembers(db)
         self.sessions = SqlSessions(db)
+        self.budgets = SqlBudgets(db)
         self.transactions = SqlTransactions(db)
         self.activity = SqlActivity(db)
 

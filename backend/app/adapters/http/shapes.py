@@ -5,12 +5,21 @@ Shapes used by a single router live in that router's module.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
+from datetime import date
 from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import Query
-from pydantic import BaseModel, ConfigDict, Field, StrictInt, StringConstraints
+from pydantic import (
+    BaseModel,
+    BeforeValidator,
+    ConfigDict,
+    Field,
+    StrictInt,
+    StringConstraints,
+)
 from pydantic.alias_generators import to_camel
 
 from app.application.auth import SessionView
@@ -21,7 +30,18 @@ CENTS_LIMIT = 9_999_999_999
 MAX_PAGE_SIZE = 200
 DEFAULT_PAGE_SIZE = 50
 
+ISO_DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
+
 Cents = Annotated[StrictInt, Field(ge=-CENTS_LIMIT, le=CENTS_LIMIT)]
+
+
+def _iso_date(value: object) -> date:
+    if not isinstance(value, str) or not ISO_DATE.fullmatch(value):
+        raise ValueError("Dates are YYYY-MM-DD")
+    return date.fromisoformat(value)
+
+
+IsoDate = Annotated[date, BeforeValidator(_iso_date)]
 Password = Annotated[
     str,
     StringConstraints(strict=True, min_length=PASSWORD_MIN, max_length=PASSWORD_MAX),
@@ -64,6 +84,14 @@ def provided(body: BaseModel, nullable: tuple[str, ...] = ()) -> dict[str, objec
         if value is None and name not in nullable:
             raise validation(f"Invalid {to_camel(name)}", to_camel(name))
     return sent
+
+
+class PeriodOut(ApiModel):
+    month: str
+    start: date
+    end: date
+    today: date
+    days_in_month: int
 
 
 class MemberOut(ApiModel):

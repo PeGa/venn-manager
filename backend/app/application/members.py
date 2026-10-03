@@ -40,6 +40,11 @@ def _view(ctx: Context, member: Member) -> MemberView:
     return member_view(member, spent.get(member.id, 0))
 
 
+def _log(ctx: Context, auth: Auth, member: Member, action: str) -> None:
+    target = Target("member", member.id)
+    record(ctx, auth.member.id, action, {"name": member.real_name}, target)
+
+
 def _active(ctx: Context, member_id: UUID) -> Member:
     member = ctx.uow.members.get(member_id)
     if member is None:

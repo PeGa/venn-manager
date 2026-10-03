@@ -10,7 +10,7 @@ from datetime import date, datetime
 from typing import Protocol
 from uuid import UUID
 
-from app.domain.entities import Activity, Household, LoginSession, Member
+from app.domain.entities import Activity, Budget, Household, LoginSession, Member
 
 
 class Clock(Protocol):
@@ -105,8 +105,35 @@ class SessionRepository(Protocol):
         ...
 
 
+class BudgetRepository(Protocol):
+    """Budgets (concepts), deleted ones included."""
+
+    def get(self, budget_id: UUID) -> Budget | None:
+        """The budget with *budget_id*, deleted or not."""
+        ...
+
+    def active(self) -> list[Budget]:
+        """Non-deleted budgets in creation order."""
+        ...
+
+    def name_taken(self, name: str, except_id: UUID | None = None) -> bool:
+        """Whether a non-deleted budget other than *except_id* uses *name*.
+
+        The comparison ignores case.
+        """
+        ...
+
+    def add(self, budget: Budget) -> None:
+        """Store a new budget."""
+        ...
+
+
 class TransactionRepository(Protocol):
     """Transactions and their aggregates."""
+
+    def actual_by_budget(self, start: date, end: date) -> dict[UUID, int]:
+        """Signed sum of counted transactions per budget between the dates."""
+        ...
 
     def spent_by_member(self, start: date, end: date) -> dict[UUID, int]:
         """Counted money out per member between *start* and *end*, positive."""
@@ -136,6 +163,9 @@ class UnitOfWork(Protocol):
 
     @property
     def sessions(self) -> SessionRepository: ...
+
+    @property
+    def budgets(self) -> BudgetRepository: ...
 
     @property
     def transactions(self) -> TransactionRepository: ...

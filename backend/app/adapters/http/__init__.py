@@ -2,6 +2,12 @@
 
 from fastapi import APIRouter
 
-from app.adapters.http import auth, household, me, members
+from app.adapters.http import auth, budgets, household, me, members
 
-routers: list[APIRouter] = [auth.router, me.router, household.router, members.router]
+routers: list[APIRouter] = [
+    auth.router,
+    me.router,
+    household.router,
+    members.router,
+    budgets.router,
+]
