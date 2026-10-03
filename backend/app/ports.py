@@ -10,7 +10,14 @@ from datetime import date, datetime
 from typing import Protocol
 from uuid import UUID
 
-from app.domain.entities import Activity, Budget, Household, LoginSession, Member
+from app.domain.entities import (
+    Activity,
+    Budget,
+    Household,
+    LoginSession,
+    Member,
+    Transaction,
+)
 
 
 class Clock(Protocol):
@@ -130,6 +137,27 @@ class BudgetRepository(Protocol):
 
 class TransactionRepository(Protocol):
     """Transactions and their aggregates."""
+
+    def get(self, transaction_id: UUID) -> tuple[Transaction, Budget] | None:
+        """The transaction with *transaction_id* and its budget, deleted or not."""
+        ...
+
+    def add(self, transaction: Transaction) -> None:
+        """Store a new transaction."""
+        ...
+
+    def page(
+        self, start: date, end: date, offset: int, limit: int
+    ) -> list[tuple[Transaction, Budget]]:
+        """Non-deleted transactions between the dates with their budgets.
+
+        Newest first: date descending, then creation descending.
+        """
+        ...
+
+    def count(self, start: date, end: date) -> int:
+        """How many non-deleted transactions fall between the dates."""
+        ...
 
     def actual_by_budget(self, start: date, end: date) -> dict[UUID, int]:
         """Signed sum of counted transactions per budget between the dates."""

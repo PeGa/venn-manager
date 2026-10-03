@@ -25,7 +25,14 @@ from app.adapters.persistence.tables import (
     transactions,
     users,
 )
-from app.domain.entities import Activity, Budget, Household, LoginSession, Member
+from app.domain.entities import (
+    Activity,
+    Budget,
+    Household,
+    LoginSession,
+    Member,
+    Transaction,
+)
 
 
 def make_engine(url: str, **kwargs: Any) -> Engine:
@@ -158,6 +165,44 @@ class SqlTransactions:
 
     def __init__(self, db: Session) -> None:
         self.db = db
+
+    def get(self, transaction_id: UUID) -> tuple[Transaction, Budget] | None:
+        row = self.db.execute(
+            select(Transaction, Budget)
+            .join(budgets, budgets.c.id == transactions.c.budget_id)
+            .where(transactions.c.id == transaction_id)
+        ).first()
+        return None if row is None else (row[0], row[1])
+
+    def add(self, transaction: Transaction) -> None:
+        self.db.add(transaction)
+
+    def page(
+        self, start: date, end: date, offset: int, limit: int
+    ) -> list[tuple[Transaction, Budget]]:
+        rows = self.db.execute(
+            select(Transaction, Budget)
+            .join(budgets, budgets.c.id == transactions.c.budget_id)
+            .where(
+                transactions.c.is_deleted.is_(False),
+                transactions.c.date.between(start, end),
+            )
+            .order_by(transactions.c.date.desc(), transactions.c.created_at.desc())
+            .offset(offset)
+            .limit(limit)
+        ).all()
+        return [(row[0], row[1]) for row in rows]
+
+    def count(self, start: date, end: date) -> int:
+        total = self.db.scalar(
+            select(func.count())
+            .select_from(transactions)
+            .where(
+                transactions.c.is_deleted.is_(False),
+                transactions.c.date.between(start, end),
+            )
+        )
+        return int(total or 0)
 
     def actual_by_budget(self, start: date, end: date) -> dict[UUID, int]:
         rows = self.db.execute(
