@@ -10,7 +10,7 @@ from datetime import date, datetime
 from typing import Protocol
 from uuid import UUID
 
-from app.domain.entities import Household, LoginSession, Member
+from app.domain.entities import Activity, Household, LoginSession, Member
 
 
 class Clock(Protocol):
@@ -64,8 +64,20 @@ class HouseholdRepository(Protocol):
 class MemberRepository(Protocol):
     """Members, removed ones included."""
 
+    def get(self, member_id: UUID) -> Member | None:
+        """The member with *member_id*, removed or not."""
+        ...
+
     def by_username(self, username: str) -> Member | None:
         """The member with *username*, removed or not."""
+        ...
+
+    def all(self) -> list[Member]:
+        """Every member, removed ones included, in creation order."""
+        ...
+
+    def active_admin_count(self) -> int:
+        """How many active members are admins."""
         ...
 
     def add(self, member: Member) -> None:
@@ -101,6 +113,18 @@ class TransactionRepository(Protocol):
         ...
 
 
+class ActivityRepository(Protocol):
+    """The activity feed."""
+
+    def add(self, entry: Activity) -> None:
+        """Store a new entry."""
+        ...
+
+    def newest(self) -> Activity | None:
+        """The most recent entry, if any."""
+        ...
+
+
 class UnitOfWork(Protocol):
     """Repositories sharing one database transaction."""
 
@@ -115,6 +139,9 @@ class UnitOfWork(Protocol):
 
     @property
     def transactions(self) -> TransactionRepository: ...
+
+    @property
+    def activity(self) -> ActivityRepository: ...
 
     def commit(self) -> None:
         """Make every change since the last commit permanent."""

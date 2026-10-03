@@ -19,7 +19,7 @@ from app.adapters.security import Argon2Hasher
 from app.application.seed import seed
 from app.config import Settings
 from app.main import create_app
-from tests.helpers import FakeClock
+from tests.helpers import FakeClock, sign_in
 
 START = datetime(2026, 9, 28, 10, 0, tzinfo=UTC)
 
@@ -83,5 +83,19 @@ def app(
 
 @pytest.fixture
 def client(app: FastAPI) -> Iterator[TestClient]:
+    with TestClient(app) as test_client:
+        yield test_client
+
+
+@pytest.fixture
+def admin(client: TestClient) -> TestClient:
+    """The client, signed in as the seeded admin with the gate lifted."""
+    sign_in(client)
+    return client
+
+
+@pytest.fixture
+def other(app: FastAPI) -> Iterator[TestClient]:
+    """A second, independent browser."""
     with TestClient(app) as test_client:
         yield test_client

@@ -44,3 +44,25 @@ def sign_in(
             json={"currentPassword": password, "newPassword": ADMIN_PASSWORD},
         )
         assert changed.status_code == 204
+
+
+def add_member(
+    client: TestClient,
+    username: str,
+    *,
+    is_admin: bool = False,
+    password: str = "initial-pass",
+) -> dict[str, object]:
+    """Create a member through the API as the signed-in admin."""
+    response = client.post(
+        "/api/v1/members",
+        json={
+            "username": username,
+            "realName": username.capitalize(),
+            "password": password,
+            "isAdmin": is_admin,
+        },
+    )
+    assert response.status_code == 201, response.json()
+    body: dict[str, object] = response.json()
+    return body

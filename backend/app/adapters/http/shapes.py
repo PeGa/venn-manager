@@ -14,6 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field, StrictInt, StringConstraints
 from pydantic.alias_generators import to_camel
 
 from app.application.auth import SessionView
+from app.domain.errors import validation
 from app.domain.members import PASSWORD_MAX, PASSWORD_MIN
 
 CENTS_LIMIT = 9_999_999_999
@@ -49,6 +50,20 @@ class InputModel(ApiModel):
     """Request bodies. Unknown fields are rejected."""
 
     model_config = ConfigDict(extra="forbid")
+
+
+def provided(body: BaseModel, nullable: tuple[str, ...] = ()) -> dict[str, object]:
+    """The fields a PATCH body actually sent, by Python name.
+
+    An empty body, or `null` for a field that cannot be null, is `VALIDATION`.
+    """
+    sent = {name: getattr(body, name) for name in body.model_fields_set}
+    if not sent:
+        raise validation("Nothing to change")
+    for name, value in sent.items():
+        if value is None and name not in nullable:
+            raise validation(f"Invalid {to_camel(name)}", to_camel(name))
+    return sent
 
 
 class MemberOut(ApiModel):

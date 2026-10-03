@@ -18,8 +18,14 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Session
 
-from app.adapters.persistence.tables import budgets, sessions, transactions, users
-from app.domain.entities import Household, LoginSession, Member
+from app.adapters.persistence.tables import (
+    activity,
+    budgets,
+    sessions,
+    transactions,
+    users,
+)
+from app.domain.entities import Activity, Household, LoginSession, Member
 
 
 def make_engine(url: str, **kwargs: Any) -> Engine:
@@ -65,6 +71,20 @@ class SqlMembers:
 
     def __init__(self, db: Session) -> None:
         self.db = db
+
+    def get(self, member_id: UUID) -> Member | None:
+        return self.db.get(Member, member_id)
+
+    def all(self) -> list[Member]:
+        return list(self.db.scalars(select(Member).order_by(users.c.created_at)))
+
+    def active_admin_count(self) -> int:
+        count = self.db.scalar(
+            select(func.count())
+            .select_from(users)
+            .where(users.c.is_admin.is_(True), users.c.is_removed.is_(False))
+        )
+        return int(count or 0)
 
     def by_username(self, username: str) -> Member | None:
         return self.db.scalars(
@@ -122,6 +142,21 @@ class SqlTransactions:
         return {member_id: int(total) for member_id, total in rows}
 
 
+class SqlActivity:
+    """`ActivityRepository` over the `activity` table."""
+
+    def __init__(self, db: Session) -> None:
+        self.db = db
+
+    def add(self, entry: Activity) -> None:
+        self.db.add(entry)
+
+    def newest(self) -> Activity | None:
+        return self.db.scalars(
+            select(Activity).order_by(activity.c.at.desc()).limit(1)
+        ).first()
+
+
 class SqlUnitOfWork:
     """`UnitOfWork` sharing one SQLAlchemy session across repositories."""
 
@@ -131,6 +166,7 @@ class SqlUnitOfWork:
         self.members = SqlMembers(db)
         self.sessions = SqlSessions(db)
         self.transactions = SqlTransactions(db)
+        self.activity = SqlActivity(db)
 
     def commit(self) -> None:
         self.db.commit()

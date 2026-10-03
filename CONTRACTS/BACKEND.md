@@ -228,7 +228,7 @@ While the flag is set, the member's sessions may only call `POST /auth/password`
 - Every successful household mutation writes one entry, except the merge case below. Login, logout, password changes and `PATCH /me` write none.
 - `params` snapshot names and values at write time (API_SURFACE.md § 1.8).
 - `PATCH /household` writes one entry per changed field.
-- **Merge**: if the newest entry has the same actor, the same action and the same target, it is updated in place (new params, new `at`) instead of adding a row. This applies to every action.
+- **Merge**: if the newest entry has the same actor, the same action and the same target, it is updated in place (new params, new `at`) instead of adding a row. Entries without a target (`tx.bulkDelete`) never merge, so counts are not overwritten.
 - The target's navigational state (`archived`, `goal`, existence) is resolved when entries are read.
 
 ---
