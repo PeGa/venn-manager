@@ -1,29 +1,46 @@
-"""Test-only helpers shared across suites."""
+"""Shared test utilities."""
 
 from __future__ import annotations
 
-from typing import Any
+from datetime import datetime, timedelta
 
-from flask import Flask
+from fastapi.testclient import TestClient
 
-from app.middleware.auth import admin_required, authenticated_user, login_required
-from app.middleware.responses import respond
+JSON = {"Content-Type": "application/json"}
+ADMIN_PASSWORD = "admin-password"
 
 
-def register_probe_routes(app: Flask) -> None:
-    """Mount throwaway routes that exercise the auth decorators.
+class FakeClock:
+    """A clock that only moves when told to, plus one microsecond per reading.
 
-    The contract defines no such endpoints; they exist so the gate can be
-    tested before (and independently of) the real route modules.
+    The tick keeps creation order deterministic without real sleeps.
     """
 
-    @app.route("/api/v1/_probe")
-    @login_required
-    def _probe() -> Any:
-        user = authenticated_user()
-        return respond({"username": user.username, "user_id": user.id})
+    def __init__(self, start: datetime) -> None:
+        self.current = start
 
-    @app.route("/api/v1/_admin")
-    @admin_required
-    def _admin() -> Any:
-        return respond({"ok": True})
+    def now(self) -> datetime:
+        self.current += timedelta(microseconds=1)
+        return self.current
+
+    def set(self, moment: datetime) -> None:
+        self.current = moment
+
+    def advance(self, delta: timedelta) -> None:
+        self.current += delta
+
+
+def sign_in(
+    client: TestClient, username: str = "admin", password: str = "admin"
+) -> None:
+    """Log in and, if required, set *password* again so the gate lifts."""
+    response = client.post(
+        "/api/v1/auth/login", json={"username": username, "password": password}
+    )
+    assert response.status_code == 200, response.json()
+    if response.json()["mustChangePassword"]:
+        changed = client.post(
+            "/api/v1/auth/password",
+            json={"currentPassword": password, "newPassword": ADMIN_PASSWORD},
+        )
+        assert changed.status_code == 204

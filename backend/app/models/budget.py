@@ -1,45 +1,30 @@
-"""Budget model — a standing planned amount for a concept.
-
-Budgets persist across months. Their `date` is informational (the intended day
-of the money movement) and is never rewritten by the month switch; the frontend
-displays it inside the working month with the day clamped (BACKEND.md § 3.4).
-`amount` is nullable: a budget entry may exist without a reserved amount.
-"""
+"""A concept and its budget, stored as one row (BACKEND.md § 6)."""
 
 from __future__ import annotations
 
-import datetime as dt
-from decimal import Decimal
+import uuid
+from datetime import date, datetime
 
-from sqlalchemy import (
-    Boolean,
-    Date,
-    DateTime,
-    ForeignKey,
-    Index,
-    Numeric,
-)
+from sqlalchemy import BigInteger, Boolean, Date, ForeignKey, String, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.extensions import Base
-from app.utils.dates import utc_now
+from app.db import Base, UTCDateTime
+
+BUDGET_NAME_MAX = 60
+REPEATS = ("once", "weekly", "biweekly", "monthly")
 
 
 class Budget(Base):
-    """A planned amount. Soft-deleted, never hard-deleted."""
+    """The name is the concept; amount, schedule and goal flag are the budget."""
 
     __tablename__ = "budgets"
-    __table_args__ = (
-        Index("ix_budgets_date", "date"),
-        Index("ix_budgets_concept_id", "concept_id"),
-    )
 
-    id: Mapped[int] = mapped_column(primary_key=True)
-    date: Mapped[dt.date] = mapped_column(Date, nullable=False)
-    concept_id: Mapped[int] = mapped_column(ForeignKey("concepts.id"), nullable=False)
-    amount: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
-    created_at: Mapped[dt.datetime] = mapped_column(
-        DateTime, nullable=False, default=utc_now
-    )
-    is_deleted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    name: Mapped[str] = mapped_column(String(BUDGET_NAME_MAX), index=True)
+    amount: Mapped[int] = mapped_column(BigInteger, default=0)
+    schedule_repeat: Mapped[str | None] = mapped_column(String(8))
+    schedule_anchor: Mapped[date | None] = mapped_column(Date)
+    is_goal: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_deleted: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime)

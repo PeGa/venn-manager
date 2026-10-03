@@ -62,7 +62,7 @@ If code and contract disagree, the contract wins. If you believe the contract is
 
 ### Structure
 
-- Backend: `pytest`, `pytest-cov`, FastAPI's `TestClient` (`httpx`).
+- Backend: `pytest`, `pytest-cov`, FastAPI's `TestClient` (`httpx2`).
 - Frontend: `vitest`, `@solidjs/testing-library`, `jsdom`.
 - Test files mirror source files: `app/services/forecast.py` → `tests/services/test_forecast.py`.
 - Each test file has fixtures, happy paths, error paths and edge cases.
@@ -259,7 +259,7 @@ venn-manager/
 | `sqlalchemy`, `alembic` | Persistence, migrations |
 | `argon2-cffi` | Password hashing |
 | `tzdata` | Time zone database where the OS has none (Windows, Electron) |
-| `pytest`, `pytest-cov`, `httpx` | Testing |
+| `pytest`, `pytest-cov`, `httpx2` | Testing |
 | `ruff`, `mypy`, `pip-audit` | Tooling |
 
 **Frontend**

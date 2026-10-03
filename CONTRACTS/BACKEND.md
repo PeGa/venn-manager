@@ -18,7 +18,7 @@ Domain rules and every formula. Endpoints and shapes are in API_SURFACE.md.
 |---|---|---|
 | `household` | `name`, `currency_sign`, `timezone`, `opening_balance`, `show_member_income`, `rev` | Exactly one row |
 | `users` | `username` (unique), `real_name`, `password_hash`, `must_change_password`, `is_admin`, `language` (nullable), `theme`, `color`, `is_removed`, `created_at` | A member. `language` stays null until the member picks one |
-| `sessions` | `token_hash` (unique), `user_id`, `created_at`, `last_seen_at` | Server-side sessions |
+| `sessions` | `token_hash` (unique), `user_id`, `created_at` | Server-side sessions |
 | `budgets` | `name`, `amount`, `schedule_repeat`, `schedule_anchor`, `is_goal`, `is_deleted`, `created_by`, `created_at` | A concept and its budget |
 | `transactions` | `payee`, `budget_id`, `amount`, `member_id`, `date`, `created_by`, `created_at`, `updated_at`, `is_deleted` | |
 | `activity` | `actor_id`, `action`, `params` (JSON), `target_type`, `target_id`, `target_section`, `at` | |

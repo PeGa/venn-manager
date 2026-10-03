@@ -1,0 +1,32 @@
+[project]
+name = "venn-manager-backend"
+version = "0.1.0"
+description = "Venn Manager API. Behaviour: CONTRACTS/BACKEND.md and CONTRACTS/API_SURFACE.md."
+requires-python = ">=3.12"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "--strict-markers --cov=app --cov-report=term-missing --cov-fail-under=90"
+filterwarnings = ["error"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+extend-exclude = ["venv"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "S"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101", "S105", "S106"]
+
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Query", "fastapi.Cookie"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+plugins = ["pydantic.mypy"]
+files = ["app", "tests", "migrations"]
+exclude = ["venv/"]

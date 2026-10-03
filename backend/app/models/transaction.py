@@ -1,40 +1,30 @@
-"""Transaction model — an actual money movement in a given month."""
+"""A signed movement of money against one budget (BACKEND.md § 7)."""
 
 from __future__ import annotations
 
 import datetime as dt
-from decimal import Decimal
+import uuid
 
-from sqlalchemy import (
-    Boolean,
-    Date,
-    DateTime,
-    ForeignKey,
-    Index,
-    Numeric,
-)
+from sqlalchemy import BigInteger, Boolean, Date, ForeignKey, String, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.extensions import Base
-from app.utils.dates import utc_now
+from app.db import Base, UTCDateTime
+
+PAYEE_MAX = 120
 
 
 class Transaction(Base):
-    """A recorded spend or earning. Soft-deleted, never hard-deleted."""
+    """Positive amounts come in, negative amounts go out. Never zero."""
 
     __tablename__ = "transactions"
-    __table_args__ = (
-        Index("ix_transactions_date", "date"),
-        Index("ix_transactions_concept_id", "concept_id"),
-    )
 
-    id: Mapped[int] = mapped_column(primary_key=True)
-    date: Mapped[dt.date] = mapped_column(Date, nullable=False)
-    concept_id: Mapped[int] = mapped_column(ForeignKey("concepts.id"), nullable=False)
-    # DECIMAL(10,2) per the API_SURFACE.md reference schema.
-    amount: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
-    created_at: Mapped[dt.datetime] = mapped_column(
-        DateTime, nullable=False, default=utc_now
-    )
-    is_deleted: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    payee: Mapped[str] = mapped_column(String(PAYEE_MAX))
+    budget_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("budgets.id"), index=True)
+    amount: Mapped[int] = mapped_column(BigInteger)
+    member_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), index=True)
+    date: Mapped[dt.date] = mapped_column(Date, index=True)
+    created_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[dt.datetime] = mapped_column(UTCDateTime)
+    updated_at: Mapped[dt.datetime] = mapped_column(UTCDateTime)
+    is_deleted: Mapped[bool] = mapped_column(Boolean, default=False)

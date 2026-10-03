@@ -1,70 +1,67 @@
-"""Application configuration.
-
-Every value originates in the environment (AGENTS.md § Environment & Secrets).
-`create_app` accepts an override mapping so tests can inject a database URL, a
-secret key and a frozen clock without mutating the process environment.
-"""
+"""Runtime configuration, read from environment variables (AGENTS.md § Environment)."""
 
 from __future__ import annotations
 
 import os
-from collections.abc import Callable, Mapping
-from datetime import date
+from collections.abc import Mapping, MutableMapping
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from app.utils.env import load_dotenv
-
-BACKEND_ROOT = Path(__file__).resolve().parent.parent
-ENV_FILE = BACKEND_ROOT / ".env"
-
-#: AGENTS.md § Environment & Secrets: at least 32 bytes, from the environment.
-MINIMUM_SECRET_KEY_BYTES = 32
-
-DEFAULT_DATABASE_URL = "sqlite:///venn_manager.db"
-PRODUCTION = "production"
+APP_ENVS = ("development", "production")
 
 
-Clock = Callable[[], date]
-"""Callable returning "today". Injected so month logic stays testable."""
+@dataclass(frozen=True)
+class Settings:
+    """Every configurable value. Defaults suit local development."""
+
+    database_url: str = "sqlite:///venn_manager.db"
+    app_env: str = "development"
+    default_admin_username: str = "admin"
+    default_admin_password: str = "admin"  # noqa: S105  (documented default)
+    default_timezone: str = "UTC"
+
+    @property
+    def secure_cookies(self) -> bool:
+        """Whether the session cookie carries the `Secure` flag."""
+        return self.app_env == "production"
 
 
-def _load_environment() -> None:
-    load_dotenv(ENV_FILE)
+def load_dotenv(path: Path, environ: MutableMapping[str, str] = os.environ) -> None:
+    """Copy `KEY=VALUE` lines from *path* into *environ*.
+
+    Variables that are already set are left alone, so an exported value always
+    wins over the file. Blank lines, comments and malformed lines are skipped.
+    """
+    if not path.is_file():
+        return
+    for raw in path.read_text(encoding="utf-8").splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        environ.setdefault(key.strip(), value.strip().strip("'\""))
 
 
-def _require_secret_key(value: Any) -> str:
-    """Validate SECRET_KEY without ever echoing it into an error or a log."""
-    if (
-        not isinstance(value, str)
-        or len(value.encode("utf-8")) < MINIMUM_SECRET_KEY_BYTES
-    ):
-        raise RuntimeError(
-            "SECRET_KEY must be set in the environment and be at least "
-            f"{MINIMUM_SECRET_KEY_BYTES} bytes"
-        )
-    return value
-
-
-def build_config(overrides: Mapping[str, Any] | None = None) -> dict[str, Any]:
-    """Assemble the Flask config from the environment plus *overrides*."""
-    _load_environment()
-    config: dict[str, Any] = {
-        "SECRET_KEY": os.environ.get("SECRET_KEY", ""),
-        "SQLALCHEMY_DATABASE_URI": os.environ.get("DATABASE_URL", DEFAULT_DATABASE_URL),
-        "SQLALCHEMY_TRACK_MODIFICATIONS": False,
-        "FLASK_ENV": os.environ.get("FLASK_ENV", "development"),
-        # Session cookie posture: AGENTS.md § Authentication & Session Security.
-        "SESSION_COOKIE_HTTPONLY": True,
-        "SESSION_COOKIE_SAMESITE": "Lax",
-        # Seeding inputs, consumed only by the first migration (BACKEND.md § 4).
-        "DEFAULT_ADMIN_USERNAME": os.environ.get("DEFAULT_ADMIN_USERNAME", "admin"),
-        "DEFAULT_ADMIN_PASSWORD": os.environ.get("DEFAULT_ADMIN_PASSWORD", "admin"),
-        # Test seam: the month logic reads "today" through this callable.
-        "CLOCK": date.today,
-    }
-    if overrides:
-        config.update(overrides)
-    config.setdefault("SESSION_COOKIE_SECURE", config["FLASK_ENV"] == PRODUCTION)
-    config["SECRET_KEY"] = _require_secret_key(config["SECRET_KEY"])
-    return config
+def settings_from_env(environ: Mapping[str, str] = os.environ) -> Settings:
+    """Build `Settings` from *environ*, rejecting values that cannot work."""
+    defaults = Settings()
+    app_env = environ.get("APP_ENV", defaults.app_env)
+    if app_env not in APP_ENVS:
+        raise ValueError(f"APP_ENV must be one of {', '.join(APP_ENVS)}")
+    timezone = environ.get("DEFAULT_TIMEZONE", defaults.default_timezone)
+    try:
+        ZoneInfo(timezone)
+    except (ZoneInfoNotFoundError, ValueError) as exc:
+        raise ValueError("DEFAULT_TIMEZONE must be a valid IANA time zone") from exc
+    return Settings(
+        database_url=environ.get("DATABASE_URL", defaults.database_url),
+        app_env=app_env,
+        default_admin_username=environ.get(
+            "DEFAULT_ADMIN_USERNAME", defaults.default_admin_username
+        ),
+        default_admin_password=environ.get(
+            "DEFAULT_ADMIN_PASSWORD", defaults.default_admin_password
+        ),
+        default_timezone=timezone,
+    )
