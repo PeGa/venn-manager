@@ -1,0 +1,151 @@
+/**
+ * Spanish strings.
+ *
+ * Typed against `TranslationKey`, so adding a key to `en.ts` without
+ * translating it here fails the build instead of rendering a bare key.
+ */
+import type { TranslationKey } from "./en";
+
+export const es: Record<TranslationKey, string> = {
+  app_name: "Venn Manager",
+  save: "Guardar",
+  cancel: "Cancelar",
+  close: "Cerrar",
+  delete: "Eliminar",
+  edit: "Editar",
+  add: "Añadir",
+  confirm: "Confirmar",
+  loading: "Cargando…",
+  retry: "Reintentar",
+  search: "Buscar",
+  search_placeholder: "Filtrar por concepto…",
+  no_results: "Todavía no hay nada que mostrar.",
+  deleted_tag: "(eliminado)",
+  required_note: "Obligatorio",
+  flow_in: "Entrada",
+  flow_out: "Salida",
+  date_column: "Fecha",
+  concept_column: "Concepto",
+  amount_column: "Importe",
+  flow_column: "Flujo",
+  user_column: "Usuario",
+  rows_per_page: "Filas",
+  page_label: "Página {page} de {total}",
+  pagination_all: "Todas",
+  pagination_previous: "Página anterior",
+  pagination_next: "Página siguiente",
+  select_row: "Seleccionar la fila {name}",
+
+  menu_open: "Abrir la navegación",
+  menu_close: "Cerrar la navegación",
+  nav_home: "Inicio",
+  nav_budget: "Presupuesto",
+  nav_concepts: "Conceptos",
+  nav_history: "Historial",
+  nav_configuration: "Configuración",
+
+  add_record: "Añadir registro",
+  edit_record: "Editar registro",
+  delete_record: "Eliminar registro",
+  delete_records_count: "Eliminar {count} seleccionados",
+  selection_hint: "Toca las filas para seleccionarlas y confirma el borrado.",
+  selected_count: "{count} seleccionados",
+  clear_selection: "Vaciar la selección",
+
+  home_title: "Inicio",
+  widget_actual_out: "Gastado hasta ahora",
+  widget_actual_in: "Ingresado hasta ahora",
+  widget_savings_projection: "Proyección de ahorro",
+  widget_spend_projection: "Proyección de gasto",
+  widget_earn_projection: "Proyección de ingreso",
+  widget_spend_breakdown: "{spent} gastado + {remaining} de presupuesto pendiente",
+  widget_earn_breakdown: "{booked} ingresado + {remaining} aún previsto",
+  widget_earn_none: "sin ingresos registrados todavía",
+
+  budget_title: "Presupuesto",
+  budget_amount_optional: "Importe (opcional)",
+  budget_hint:
+    "Los presupuestos persisten entre meses. Su fecha es el día previsto del movimiento y se muestra dentro del mes de trabajo.",
+
+  switch_cta: "Cambiar al mes actual",
+  month_switch_title: "Ha empezado un mes nuevo",
+  month_switch_body:
+    "El calendario ha pasado a {current}. Tus registros y presupuestos no cambian: el mes nuevo simplemente empieza sin movimientos. ¿Cambiar ahora?",
+  month_switch_confirm: "Cambiar a {current}",
+  month_switch_decline: "Seguir en {working}",
+
+  concepts_title: "Conceptos",
+  add_concept: "Añadir concepto",
+  edit_concept: "Editar concepto",
+  show_deleted: "Mostrar eliminados",
+  concept_name_label: "Concepto",
+  concept_flow_label: "Flujo",
+  concept_created_column: "Fecha",
+  rename_warning_title: "¿Cambiar el nombre de este concepto?",
+  rename_warning_body:
+    "Los registros referencian los conceptos por id, así que el nombre nuevo aparece en todas partes, también en meses anteriores.",
+  delete_concept_warning_title: "¿Eliminar este concepto?",
+  delete_concept_warning_body:
+    "Sus presupuestos y los registros de este mes desaparecerán. Los meses anteriores los conservan, marcados como eliminados. No se puede deshacer.",
+  flow_immutable_note:
+    "El flujo no se puede cambiar. Elimina el concepto y crea uno nuevo.",
+
+  history_title: "Historial",
+  history_month_label: "Mes",
+  history_readonly_note: "El historial es de solo lectura.",
+  no_previous_months: "No hay meses anteriores que mostrar",
+
+  configuration_title: "Configuración",
+  profile_title: "Perfil",
+  management_title: "Gestión",
+  logout: "Cerrar sesión",
+  username_label: "Nombre de usuario",
+  real_name_label: "Nombre real",
+  current_password_label: "Contraseña actual",
+  password_label: "Contraseña",
+  new_password_label: "Contraseña nueva",
+  repeat_password_label: "Repite la contraseña",
+  language_label: "Idioma de la aplicación",
+  currency_label: "Moneda",
+  theme_label: "Tema de color",
+  theme_light: "Claro",
+  theme_dark: "Oscuro",
+  theme_system: "Sistema",
+  change_password: "Cambiar la contraseña",
+  currency_warning_title: "La moneda afecta a todos",
+  currency_warning_body:
+    "La moneda es un ajuste global. Cambiarla actualiza la aplicación para todos los usuarios. ¿Continuar?",
+  users_grid_title: "Usuarios",
+  add_user: "Añadir usuario",
+  is_admin_column: "Es administrador",
+  delete_user_warning_title: "¿Eliminar este usuario?",
+  delete_user_warning_body:
+    "No podrá volver a entrar y su nombre se marcará como eliminado. Sus registros se conservan y el nombre de usuario no se puede reutilizar. No se puede deshacer.",
+
+  login_title: "Iniciar sesión",
+  sign_in: "Entrar",
+  force_change_title: "Elige una contraseña nueva",
+  force_change_body:
+    "Has entrado con la contraseña por defecto. Define la tuya para continuar.",
+
+  error_unauthorized: "Tu sesión ha terminado. Vuelve a iniciar sesión.",
+  error_forbidden: "No tienes permiso para hacer eso.",
+  error_password_change_required: "Cambia tu contraseña para continuar.",
+  error_not_found: "Ese registro no existe.",
+  error_conflict: "Ese valor ya está en uso.",
+  error_gone: "El registro ya no está disponible.",
+  error_validation: "Revisa los campos marcados.",
+  error_internal: "Algo ha fallado en el servidor.",
+  error_network: "No se puede conectar con el servidor.",
+  error_unknown: "Algo ha fallado.",
+
+  validation_required: "Este campo es obligatorio.",
+  validation_amount: "Introduce un importe con dos decimales como máximo.",
+  validation_date: "Introduce una fecha válida.",
+  validation_concept_name: "Introduce un nombre de 64 caracteres o menos.",
+  validation_currency: "La moneda debe ser un único carácter.",
+  validation_password_short: "Usa al menos 8 caracteres.",
+  validation_password_mismatch: "Las contraseñas no coinciden.",
+  validation_username: "Introduce un usuario de 64 caracteres o menos.",
+  validation_real_name: "Introduce un nombre de 128 caracteres o menos.",
+};

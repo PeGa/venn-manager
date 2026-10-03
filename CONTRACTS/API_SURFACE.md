@@ -121,6 +121,8 @@ A soft-deleted user cannot log in. The response is the same 401 as for invalid c
 
 Clears the session cookie and invalidates the session server-side.
 
+Permitted while `must_change_password` is true, alongside `POST /api/v1/auth/password`. A restricted session must still be able to end itself and let someone else sign in.
+
 **Success (200):**
 ```json
 {
@@ -148,7 +150,7 @@ Same shape as login success response.
 
 ### POST /api/v1/auth/password
 
-Changes the current user's password. This is the **only endpoint permitted** when `must_change_password` is true. All other endpoints return `PASSWORD_CHANGE_REQUIRED` until the password is changed.
+Changes the current user's password. This and `POST /api/v1/auth/logout` are the **only endpoints permitted** when `must_change_password` is true. Every other endpoint returns `PASSWORD_CHANGE_REQUIRED` until the password is changed.
 
 **Request body:**
 ```json
@@ -168,7 +170,7 @@ Changes the current user's password. This is the **only endpoint permitted** whe
 ```
 
 **Error (401):** `current_password` is incorrect.
-**Error (422):** `new_password` does not meet requirements (e.g. too short, same as current).
+**Error (422):** `new_password` does not meet the policy — it must be 8 to 128 characters and must differ from `current_password`. The same bounds apply to every other password field in this API.
 
 ---
 
@@ -356,7 +358,7 @@ Creates a new user.
 ```
 
 **Error (409):** Username already exists.
-**Error (422):** Validation failure (missing fields, password too short).
+**Error (422):** Validation failure (missing fields, or a password outside the 8–128 character policy).
 
 #### PATCH /api/v1/settings/users/:id
 
@@ -730,7 +732,9 @@ Read-only computed values for a given month. Computed on-the-fly per request. No
     "earn_projection": 3000.00,
     "savings_projection": 1750.00,
     "actual_spend": 830.50,
-    "actual_earn": 3000.00
+    "actual_earn": 3000.00,
+    "spend_budget_remaining": 419.50,
+    "earn_budget_remaining": 0.00
   },
   "error": null,
   "meta": null
@@ -742,6 +746,11 @@ Read-only computed values for a given month. Computed on-the-fly per request. No
 - `savings_projection`: `earn_projection - spend_projection`.
 - `actual_spend`: sum of transaction amounts with `flow = out` in the given month.
 - `actual_earn`: sum of transaction amounts with `flow = in` in the given month.
+- `spend_budget_remaining`: over budgeted OUT concepts, the sum of `max(0, budget − actual)`, treating a missing actual as 0. The part of `spend_projection` that has not been spent yet. The identity `spend_projection = actual_spend + spend_budget_remaining` always holds.
+- `earn_budget_remaining`: the same sum over budgeted IN concepts. The income still expected to land. There is deliberately no identity with `earn_projection`, because income above a budget is capped out of the projection.
+
+These two fields exist so the UI can show *why* a projection differs from the
+actuals (FRONTEND.md § 1.2). They are derived, never stored.
 
 Computation logic is defined in Business Logic § Projection Calculation.
 
@@ -757,7 +766,8 @@ No stored flag. Derived at login.
 
 When true:
 - Login response includes `must_change_password: true`.
-- Session is established but restricted: all endpoints except `POST /api/v1/auth/password` return `PASSWORD_CHANGE_REQUIRED` (403).
+- Session is established but restricted: all endpoints except `POST /api/v1/auth/password` and `POST /api/v1/auth/logout` return `PASSWORD_CHANGE_REQUIRED` (403).
+- Logout is exempt so a restricted session can still be ended. Without it a user who lands on the forced-change screen cannot switch account without first setting a password.
 - Once the password is changed, the hash no longer matches the default, and the restriction lifts.
 
 If the user later changes their password back to the default, the condition re-triggers only if they are still the sole user. In practice, by that point other users will have been created, so the condition will not fire.
@@ -781,12 +791,15 @@ budget_concept_ids = set of concept_ids that have budget entries
 
 For each concept C that has at least one budget entry:
     budget_amount = sum of budget entry amounts for C (treat null as 0)
-    actual_amount = sum of transaction amounts in target month where concept_id = C.id
+    has_actual    = at least one transaction exists in the target month for C
+    actual_amount = sum of those transaction amounts (only 0 if a 0 was recorded)
 
     if C.flow == "out":
-        spend_projection += max(budget_amount, actual_amount)
+        spend_projection += budget_amount if not has_actual
+                            else max(budget_amount, actual_amount)
     elif C.flow == "in":
-        earn_projection += min(budget_amount, actual_amount)
+        earn_projection  += budget_amount if not has_actual
+                            else min(budget_amount, actual_amount)
 
 For each transaction T in target month where T.concept_id NOT IN budget_concept_ids:
     if T.concept_flow == "out":
@@ -798,8 +811,10 @@ savings_projection = earn_projection - spend_projection
 ```
 
 **Rationale:**
-- Spending uses `max(budget, actual)`: pessimistic. If you overspent, the projection reflects the overspend. If you underspent, it assumes you'll still hit the budget.
-- Earning uses `min(budget, actual)`: pessimistic. If you earned less than planned, projection reflects the lower actual. If you earned more, it caps at the budget to avoid optimistic inflation.
+- `max` and `min` compare a plan against an outcome. When there is no outcome yet there is nothing to compare against, so the plan stands on its own: **a budgeted concept with no transactions projects its budget**, in both flows.
+- This is not the same as `actual_amount = 0`. A recorded `0` transaction *is* an actual, and is compared normally. Only the absence of any transaction falls back to the budget.
+- The OUT branch used to be written as a bare `max(budget_amount, actual_amount)`, which produced the right number by accident — `max(budget, 0)` equals the budget. The IN branch produced `min(budget, 0) = 0`, asserting an income shortfall that had not happened, and made `savings_projection` negative by the entire spend budget on the first day of every month. Coercing a missing actual to zero was the defect; both branches now fall back explicitly.
+- Once transactions exist, spending is pessimistic — `max`: an overspend shows, an underspend still assumes the budget will be reached. Earning is pessimistic the other way — `min`: a shortfall shows, a windfall is capped so the projection never inflates.
 - Transactions for concepts not in the budget are added directly. They represent unbudgeted activity.
 
 ### Month Switch
@@ -906,9 +921,9 @@ settings
 | Method | Endpoint                        | Auth   | Notes                          |
 |--------|---------------------------------|--------|--------------------------------|
 | POST   | /api/v1/auth/login              | no     | Sets session cookie            |
-| POST   | /api/v1/auth/logout             | yes    | Clears session cookie          |
+| POST   | /api/v1/auth/logout             | yes    | Clears session cookie; permitted during force-change |
 | GET    | /api/v1/auth/session            | yes    | Returns current user state     |
-| POST   | /api/v1/auth/password           | yes    | Only endpoint during force-change |
+| POST   | /api/v1/auth/password           | yes    | Permitted during force-change  |
 | GET    | /api/v1/current-month           | yes    | Month state + needs_switch     |
 | POST   | /api/v1/current-month/switch    | yes    | Acknowledges month change      |
 | GET    | /api/v1/settings                | yes    | Merged global + user settings  |

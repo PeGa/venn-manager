@@ -32,8 +32,10 @@ Thumbs.db
 # Testing / Coverage
 .coverage
 htmlcov/
+coverage/
 .pytest_cache/
 .mypy_cache/
 
 # Build artifacts
 *.egg-info/
+*.tsbuildinfo

@@ -51,13 +51,23 @@ The engine only considers records where:
 ### 2.2 The Math (Per Concept)
 For every concept that has at least one active budget entry:
 - `budget_amount` = sum of active budget amounts for this concept (nulls treated as 0).
-- `actual_amount` = sum of active transaction amounts for this concept in the target month.
+- `has_actual` = whether any active transaction exists for this concept in the target month.
+- `actual_amount` = sum of those transaction amounts.
+
+**No actual yet (both flows):**
+- Project `budget_amount`. `max` and `min` compare a plan against an outcome; with no outcome there is nothing to compare, so the plan stands alone.
 
 **If Concept Flow is OUT (Spend):**
 - Add `max(budget_amount, actual_amount)` to the total spend projection.
 
 **If Concept Flow is IN (Earn):**
 - Add `min(budget_amount, actual_amount)` to the total earn projection.
+
+"No transactions" is not the same as `actual_amount = 0`: a recorded zero is an
+actual and is compared normally. The OUT branch previously relied on
+`max(budget, 0)` coincidentally equalling the budget, while the IN branch computed
+`min(budget, 0) = 0` and reported an income shortfall that had not happened. Both
+branches now fall back to the budget explicitly.
 
 ### 2.3 Unbudgeted Activity
 For every active transaction in the target month where the concept has *no* active budget entries:
@@ -70,6 +80,11 @@ For every active transaction in the target month where the concept has *no* acti
 - `savings_projection` = `earn_projection - spend_projection`.
 - `actual_spend` = sum of all active OUT transactions in the month.
 - `actual_earn` = sum of all active IN transactions in the month.
+- `spend_budget_remaining` = over budgeted OUT concepts, sum of `max(0, budget_amount − actual_amount)`, treating a missing actual as 0. The unspent part of the spend projection; `spend_projection = actual_spend + spend_budget_remaining`.
+- `earn_budget_remaining` = the same sum over budgeted IN concepts. The income still expected to land.
+
+The two `*_budget_remaining` fields are derived in the same pass as the
+projections and exist only so the UI can explain a projection (FRONTEND.md § 1.2).
 
 ## 3. Month Switch Mechanics
 
@@ -90,7 +105,7 @@ On the very first run (first migration), the database is seeded with the followi
 - One user created.
 - `username`: `admin`
 - `real_name`: `Administrator`
-- `password`: `admin` (hashed with werkzeug `generate_password_hash`, default pbkdf2, per AGENTS.md).
+- `password`: `admin` (hashed with werkzeug `generate_password_hash` at its default method, scrypt, per AGENTS.md).
 - Username and password are read from `DEFAULT_ADMIN_USERNAME` / `DEFAULT_ADMIN_PASSWORD`, which default to `admin` / `admin`.
 - `is_admin`: `true`
 

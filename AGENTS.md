@@ -84,7 +84,7 @@ This is a finance application. Security is not optional. Every agent must treat 
 ### Authentication & Session Security
 - Session cookies must be set with `HttpOnly=True`, `Secure=True` (in production), and `SameSite=Lax`.
 - The `SECRET_KEY` must be loaded from an environment variable. Never hardcode it. Never commit it.
-- Password hashing must use `werkzeug.security` (generate_password_hash / check_password_hash) with the default method (pbkdf2). Do not use MD5, SHA1, or unsalted hashes.
+- Password hashing must use `werkzeug.security` (generate_password_hash / check_password_hash) with the library's default method (scrypt since Werkzeug 3.x). Do not use MD5, SHA1, or unsalted hashes. Do not pin a weaker method to match an older default.
 - The `must_change_password` condition is not a stored flag. It is derived at login (API_SURFACE.md § Force Password Change), kept in the server-side session, and enforced server-side on every authenticated request, not just client-side.
 - Logout must invalidate the session server-side, not just clear the cookie client-side.
 

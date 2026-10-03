@@ -28,6 +28,17 @@ Once users logged in, they're presented in a dashboard taht will contain the fol
     4. Month's projection of the "Out" money (i.e. projection of how much money will be spent) [See section 2: Budget] called [Spend projection]
     5. Month's projection of the "In" money (i.e. projection of how much money will be earned) [See section 2: Budget] called [Earn projection]
 
+   The two projection widgets carry a secondary line that explains the gap
+   between the projection and the actuals, using `spend_budget_remaining` and
+   `earn_budget_remaining` (API_SURFACE.md § 5):
+
+    6. [Spend projection] sub-line: "{actual_spend} spent + {spend_budget_remaining} of budget left".
+    7. [Earn projection] sub-line: "{actual_earn} booked + {earn_budget_remaining} still expected"; when `actual_earn` is 0 it reads "no income booked yet".
+
+   Both sub-lines are translated, use the same two-decimal formatting as the
+   widget value, and are secondary text: they must not be the only place the
+   figure appears.
+
 ----
 
 3. At the top-left side, a sandwich button that toggles a **Left Sidebar (Drawer)**. This sidebar slides in from the left edge of the screen, overlaying the main content. It contains the following navigation items:
