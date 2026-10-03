@@ -1,0 +1,113 @@
+/*
+ * Design tokens: the visual reference for every screen.
+ * Components use the Tailwind names below; themes only redefine the variables.
+ * Dark values are derived from the light ones and pending owner review
+ * (FRONTEND.md § 11.4).
+ */
+@import "tailwindcss";
+
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+:root {
+  --ground: #f7f5f1;
+  --canvas: #efede8;
+  --card: #ffffff;
+  --card-border: #e8e4dc;
+  --hairline: #eeebe4;
+  --input-border: #d8d3c8;
+  --input-bg: #f7f5f1;
+  --ink: #1e1d1a;
+  --muted: #6b675e;
+  --faint: #8a857a;
+  --primary: #23392f;
+  --on-primary: #f3efe6;
+  --accent: #2f6b4f;
+  --bar: #4f9a76;
+  --bar-light: #9fd6b8;
+  --highlight: #eef4ef;
+  --selected: #dcebe1;
+  --hover: #f4f1ea;
+  --coral: #d9694a;
+  --coral-text: #a4432a;
+  --coral-tint: #f6dcd3;
+  --disabled-bg: #eeebe4;
+  --disabled-text: #a9a49a;
+  --scrim: rgb(30 29 26 / 0.38);
+  color-scheme: light;
+}
+
+[data-theme="dark"] {
+  --ground: #161714;
+  --canvas: #10110f;
+  --card: #1f211d;
+  --card-border: #2e312b;
+  --hairline: #2a2c27;
+  --input-border: #3a3d36;
+  --input-bg: #191a17;
+  --ink: #ece9e1;
+  --muted: #a8a397;
+  --faint: #7f7b71;
+  --primary: #1b2b23;
+  --on-primary: #f3efe6;
+  --accent: #7fc3a0;
+  --bar: #5fae88;
+  --bar-light: #9fd6b8;
+  --highlight: #1f2c25;
+  --selected: #24382c;
+  --hover: #262823;
+  --coral: #e07a5c;
+  --coral-text: #f0a088;
+  --coral-tint: #3a2620;
+  --disabled-bg: #262823;
+  --disabled-text: #6b675e;
+  --scrim: rgb(0 0 0 / 0.55);
+  color-scheme: dark;
+}
+
+@theme inline {
+  --color-ground: var(--ground);
+  --color-canvas: var(--canvas);
+  --color-card: var(--card);
+  --color-card-border: var(--card-border);
+  --color-hairline: var(--hairline);
+  --color-input-border: var(--input-border);
+  --color-input-bg: var(--input-bg);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-faint: var(--faint);
+  --color-primary: var(--primary);
+  --color-on-primary: var(--on-primary);
+  --color-accent: var(--accent);
+  --color-bar: var(--bar);
+  --color-bar-light: var(--bar-light);
+  --color-highlight: var(--highlight);
+  --color-selected: var(--selected);
+  --color-hover: var(--hover);
+  --color-coral: var(--coral);
+  --color-coral-text: var(--coral-text);
+  --color-coral-tint: var(--coral-tint);
+  --color-disabled-bg: var(--disabled-bg);
+  --color-disabled-text: var(--disabled-text);
+  --color-scrim: var(--scrim);
+  --font-sans: "DM Sans", system-ui, sans-serif;
+  --font-mono: "DM Mono", ui-monospace, monospace;
+  --radius-card: 22px;
+  --radius-control: 10px;
+  --radius-chip: 16px;
+  --shadow-frame: 0 8px 30px rgb(0 0 0 / 0.1);
+  --shadow-modal: 0 20px 60px rgb(0 0 0 / 0.25);
+  --shadow-menu: 0 14px 40px rgb(0 0 0 / 0.18);
+}
+
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font-family: var(--font-sans);
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
