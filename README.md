@@ -7,7 +7,7 @@ A shared-wallet finance manager for one household: a couple, roommates, any numb
 | Part | State |
 |---|---|
 | Backend | Rewritten: FastAPI, hexagonal, all 27 endpoints of `CONTRACTS/API_SURFACE.md` |
-| Frontend | Being rebuilt in SolidJS. The code in `frontend/` is the previous Preact app and is obsolete |
+| Frontend | Rewritten: SolidJS, hexagonal, every screen of `CONTRACTS/FRONTEND.md`, web and mobile layouts, English and Spanish |
 | Desktop | Electron, future phase |
 
 ## Stack
@@ -18,7 +18,9 @@ A shared-wallet finance manager for one household: a couple, roommates, any numb
 | Frontend | SolidJS, Vite, TypeScript (strict), Tailwind CSS v4 |
 | Database | SQLite for development, PostgreSQL-compatible for production |
 
-## Quick start (backend)
+## Quick start
+
+Two terminals. Node 24 and Python 3.12+.
 
 ```bash
 cd backend
@@ -29,7 +31,13 @@ venv/bin/alembic upgrade head
 venv/bin/uvicorn --factory app.main:create_app --reload
 ```
 
-The API runs at `http://127.0.0.1:8000/api/v1`. Sign in as `admin` / `admin`; the first sign-in asks for a new password.
+```bash
+cd frontend
+npm ci
+npm run dev
+```
+
+Open http://localhost:5173 and sign in as `admin` / `admin`. The first sign-in asks for a new password. The frontend proxies `/api` to the backend on port 8000.
 
 ## Environment variables
 
@@ -43,13 +51,20 @@ The API runs at `http://127.0.0.1:8000/api/v1`. Sign in as `admin` / `admin`; th
 
 Read from the environment or from `backend/.env`, which is gitignored.
 
-## Testing (backend)
+## Testing
 
 ```bash
 cd backend
 venv/bin/pytest            # fails below 90% coverage
 venv/bin/ruff check .
 venv/bin/mypy              # --strict
+```
+
+```bash
+cd frontend
+npm run coverage           # fails below 70% on the logic layers
+npm run typecheck
+npm run lint
 ```
 
 ## Documentation
@@ -60,4 +75,5 @@ venv/bin/mypy              # --strict
 | `CONTRACTS/API_SURFACE.md` | Endpoints, shapes, errors |
 | `CONTRACTS/BACKEND.md` | Domain rules and every formula |
 | `docs/backend/README.md` | Backend setup, layout, how to change things |
+| `docs/frontend/README.md` | Frontend setup, layout, how to change things |
 | `AGENTS.md` | Rules for any agent working on this repository |
