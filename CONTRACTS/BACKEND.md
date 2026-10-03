@@ -8,7 +8,7 @@ Domain rules and every formula. Endpoints and shapes are in API_SURFACE.md.
 
 - One household per deployment. The household row always exists after seeding.
 - Every figure the UI shows is computed per request from stored records. Nothing derived is stored or cached.
-- Money is integer cents everywhere: database, services, API.
+- Money is integer cents everywhere: database, domain, API.
 
 ---
 

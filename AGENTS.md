@@ -58,13 +58,13 @@ If code and contract disagree, the contract wins. If you believe the contract is
 - Backend tests cover every endpoint, every formula in BACKEND.md § 4–5, every validation rule, and every auth flow.
 - Frontend tests cover money and date formatting, amount parsing, the selection model, local budget recomputation, activity sentences, and screen behavior for Overview, Budget, Transactions and History. Visual layout testing is optional.
 - Every bug fix includes a regression test that fails before the fix.
-- Coverage: **90% minimum** backend, **70% minimum** frontend logic (`src/lib`, `src/api`, `src/l10n`). Below that is a blocking issue.
+- Coverage: **90% minimum** backend, **70% minimum** frontend logic (`src/domain`, `src/adapters`, `src/l10n`). Below that is a blocking issue.
 
 ### Structure
 
 - Backend: `pytest`, `pytest-cov`, FastAPI's `TestClient` (`httpx2`).
 - Frontend: `vitest`, `@solidjs/testing-library`, `jsdom`.
-- Test files mirror source files: `app/services/forecast.py` → `tests/services/test_forecast.py`.
+- Test files mirror source files: `app/domain/forecast.py` → `tests/domain/test_forecast.py`.
 - Each test file has fixtures, happy paths, error paths and edge cases.
 - Tests are deterministic. Freeze "today" explicitly; never depend on the real clock. No network calls. No reliance on execution order.
 - BACKEND.md § 4.7 (worked example) is a test, verbatim.
@@ -153,32 +153,39 @@ This is a finance application. Security is a first-class requirement.
 - **Do not** add a state management library. Use Solid signals, stores and context. Server state goes through `@tanstack/solid-query`.
 - **Do not** use `any` in TypeScript.
 
-### Separation of concerns
+### Hexagonal architecture
+
+Backend and frontend are both hexagonal: a pure core, ports, and adapters at the edges.
+The practical goal: **any change touches the fewest files possible.** A rule changes in the domain only. A storage detail changes in its adapter only. A new field touches its entity, its table, its migration and its API shape — nothing else.
 
 **Backend** (`backend/app/`):
 
-| Layer | Responsibility |
-|---|---|
-| `api/` | FastAPI routers. HTTP only: parse, call a service, map errors to status codes |
-| `schemas/` | Pydantic request and response models |
-| `services/` | Domain logic and formulas. No FastAPI imports |
-| `models/` | SQLAlchemy models |
-| `auth/` | Sessions, password hashing, the request dependency that resolves the member |
+| Layer | Responsibility | May import |
+|---|---|---|
+| `domain/` | Entities (plain dataclasses), formulas, rules, domain errors with codes | stdlib only |
+| `ports.py` | Every interface the application needs: repositories, unit of work, clock, hasher, tokens | `domain` |
+| `application/` | Use cases, one module per feature. They act only through ports | `domain`, `ports` |
+| `adapters/persistence/` | Tables, imperative mapping of the domain dataclasses, repositories, Alembic | everything except `http` |
+| `adapters/http/` | FastAPI routers, Pydantic shapes, cookies, error code → HTTP status | everything except `persistence` internals |
+| `adapters/security.py` | Argon2id hasher, token generator | `ports` |
+| `main.py` | Composition root: wires adapters to ports | everything |
 
-No SQL in routers. No HTTP in services.
+- No framework import (FastAPI, Pydantic, SQLAlchemy) inside `domain/` or `application/`.
+- Domain errors carry a contract code only. The HTTP adapter maps codes to statuses.
+- Aggregations run in SQL inside repositories. Formulas over the aggregated numbers live in `domain/`.
 
 **Frontend** (`frontend/src/`):
 
-| Folder | Responsibility |
+| Layer | Responsibility |
 |---|---|
-| `screens/` | One component per screen. Rendering only |
-| `components/` | Shared UI: cards, rows, dialogs, sheets, chips |
-| `api/` | Fetch client and one query/mutation module per resource |
-| `lib/` | Pure functions: money, dates, parsing, selection, local budget math |
+| `domain/` | Pure TypeScript: money, dates, amount parsing, budget math, selection, activity sentences |
+| `ports/` | The API interface screens depend on |
+| `adapters/` | The fetch client implementing the port, solid-query bindings |
+| `ui/` | Screens and shared components. Rendering only |
 | `l10n/` | Locale files and the translation function |
 | `styles/` | Tailwind entry and design tokens |
 
-Business logic lives in `lib/`, never in components.
+Business logic lives in `domain/`, never in components.
 
 ### Responsive behavior
 
@@ -218,21 +225,22 @@ One codebase. Width decides layout, pointer type decides interaction (FRONTEND.m
 venn-manager/
 ├── backend/
 │   ├── app/
-│   │   ├── main.py           # app factory
+│   │   ├── domain/
+│   │   ├── ports.py
+│   │   ├── application/
+│   │   ├── adapters/
+│   │   │   ├── persistence/
+│   │   │   ├── http/
+│   │   │   └── security.py
 │   │   ├── config.py
-│   │   ├── db.py
-│   │   ├── api/
-│   │   ├── schemas/
-│   │   ├── services/
-│   │   ├── models/
-│   │   └── auth/
+│   │   └── main.py           # composition root
 │   ├── migrations/           # Alembic
 │   ├── tests/                # mirrors app/
 │   ├── pyproject.toml        # tool configuration
 │   ├── requirements.txt      # pinned dependencies
 │   └── .env.example
 ├── frontend/
-│   ├── src/{screens,components,api,lib,l10n,styles}/
+│   ├── src/{domain,ports,adapters,ui,l10n,styles}/
 │   ├── tests/                # mirrors src/
 │   ├── index.html
 │   ├── vite.config.ts

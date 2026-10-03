@@ -2,6 +2,8 @@
 
 Endpoints, shapes and errors. Behavior lives in FRONTEND.md. Rules and formulas live in BACKEND.md.
 
+This document defines the **ports** of a hexagonal backend. The HTTP adapter implements them; the domain never knows about HTTP or JSON (AGENTS.md § Hexagonal architecture).
+
 ---
 
 ## 0. Conventions
