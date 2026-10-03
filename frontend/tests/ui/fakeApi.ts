@@ -92,7 +92,7 @@ export function seedState(): FakeState {
   const trip = budget("b-trip", "Lisbon trip", -22000, -9600, true);
   return {
     session: {
-      member: ALEX,
+      member: structuredClone(ALEX),
       mustChangePassword: false,
       preferences: { language: "en", theme: "light" },
     },
@@ -103,7 +103,7 @@ export function seedState(): FakeState {
       timezone: "UTC",
       openingBalance: 1290000,
       showMemberIncome: false,
-      members: [ALEX, JORDAN],
+      members: structuredClone([ALEX, JORDAN]),
     },
     budgets: [groceries, dining, paycheck, trip],
     transactions: [
