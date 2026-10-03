@@ -34,8 +34,8 @@ describe("plural", () => {
   it("picks the plural category of the language", () => {
     expect(plural("en", "transactions_count", 1)).toBe("1 transaction");
     expect(plural("en", "transactions_count", 9)).toBe("9 transactions");
-    expect(plural("es", "transactions_count", 1)).toBe("1 transacción");
-    expect(plural("es", "transactions_count", 0)).toBe("0 transacciones");
+    expect(plural("es", "transactions_count", 1)).toBe("1 movimiento");
+    expect(plural("es", "transactions_count", 0)).toBe("0 movimientos");
   });
 
   it("supports ordinal rules", () => {
