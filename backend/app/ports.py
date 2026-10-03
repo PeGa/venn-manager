@@ -18,6 +18,7 @@ from app.domain.entities import (
     Member,
     Transaction,
 )
+from app.domain.history import HistoryFilter
 
 
 class Clock(Protocol):
@@ -83,6 +84,10 @@ class MemberRepository(Protocol):
         """Every member, removed ones included, in creation order."""
         ...
 
+    def used_before(self, day: date) -> list[Member]:
+        """Members with a non-deleted transaction before *day*, creation order."""
+        ...
+
     def get_many(self, member_ids: set[UUID]) -> dict[UUID, Member]:
         """Members by id, removed ones included. Unknown ids are absent."""
         ...
@@ -125,6 +130,10 @@ class BudgetRepository(Protocol):
 
     def active(self) -> list[Budget]:
         """Non-deleted budgets in creation order."""
+        ...
+
+    def used_before(self, day: date) -> list[Budget]:
+        """Budgets with a non-deleted transaction before *day*, creation order."""
         ...
 
     def get_many(self, budget_ids: set[UUID]) -> dict[UUID, Budget]:
@@ -177,7 +186,12 @@ class TransactionRepository(Protocol):
         ...
 
     def page(
-        self, start: date, end: date, offset: int, limit: int
+        self,
+        start: date,
+        end: date,
+        offset: int,
+        limit: int,
+        filters: HistoryFilter | None = None,
     ) -> list[tuple[Transaction, Budget]]:
         """Non-deleted transactions between the dates with their budgets.
 
@@ -185,8 +199,31 @@ class TransactionRepository(Protocol):
         """
         ...
 
-    def count(self, start: date, end: date) -> int:
+    def count(
+        self, start: date, end: date, filters: HistoryFilter | None = None
+    ) -> int:
         """How many non-deleted transactions fall between the dates."""
+        ...
+
+    def months_before(
+        self,
+        day: date,
+        filters: HistoryFilter | None = None,
+        since: date | None = None,
+    ) -> list[tuple[int, int, int, int, int]]:
+        """Per month before *day* (and from *since*), newest first.
+
+        Each row is (year, month, rows, spent, earned).
+
+        Rows count every matching non-deleted transaction; spent and earned
+        only counted ones, both positive.
+        """
+        ...
+
+    def spending_by_budget(
+        self, start: date, end: date, filters: HistoryFilter | None = None
+    ) -> list[tuple[UUID, str, int]]:
+        """Counted money out per budget between the dates, largest first."""
         ...
 
     def actual_by_budget(self, start: date, end: date) -> dict[UUID, int]:

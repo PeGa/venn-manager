@@ -5,6 +5,7 @@ from fastapi import APIRouter
 from app.adapters.http import (
     auth,
     budgets,
+    history,
     household,
     me,
     members,
@@ -20,4 +21,5 @@ routers: list[APIRouter] = [
     budgets.router,
     transactions.router,
     overview.router,
+    history.router,
 ]

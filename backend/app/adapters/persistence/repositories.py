@@ -10,10 +10,12 @@ from sqlalchemy import (
     ColumnElement,
     Engine,
     and_,
+    case,
     create_engine,
     delete,
     event,
     func,
+    or_,
     select,
 )
 from sqlalchemy.orm import Session
@@ -33,6 +35,7 @@ from app.domain.entities import (
     Member,
     Transaction,
 )
+from app.domain.history import HistoryFilter
 
 
 def make_engine(url: str, **kwargs: Any) -> Engine:
@@ -55,6 +58,45 @@ def counted() -> ColumnElement[bool]:
     Queries using this must join `budgets` on `transactions.budget_id`.
     """
     return and_(transactions.c.is_deleted.is_(False), budgets.c.is_deleted.is_(False))
+
+
+def _like(value: str) -> str:
+    escaped = (
+        value.lower().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    )
+    return f"%{escaped}%"
+
+
+def matching(filters: HistoryFilter | None) -> list[ColumnElement[bool]]:
+    """Conditions for the History filters (BACKEND.md § 4.6).
+
+    Queries using this must join `budgets` and `users` on the transaction.
+    """
+    if filters is None:
+        return []
+    conditions: list[ColumnElement[bool]] = []
+    if filters.member_id is not None:
+        conditions.append(transactions.c.member_id == filters.member_id)
+    if filters.budget_id is not None:
+        conditions.append(transactions.c.budget_id == filters.budget_id)
+    if filters.q:
+        pattern = _like(filters.q)
+        conditions.append(
+            or_(
+                func.lower(transactions.c.payee).like(pattern, escape="\\"),
+                func.lower(budgets.c.name).like(pattern, escape="\\"),
+                func.lower(users.c.real_name).like(pattern, escape="\\"),
+            )
+        )
+    return conditions
+
+
+def _joined(*columns: Any) -> Any:
+    return (
+        select(*columns)
+        .join(budgets, budgets.c.id == transactions.c.budget_id)
+        .join(users, users.c.id == transactions.c.member_id)
+    )
 
 
 class SqlHouseholds:
@@ -84,6 +126,16 @@ class SqlMembers:
 
     def all(self) -> list[Member]:
         return list(self.db.scalars(select(Member).order_by(users.c.created_at)))
+
+    def used_before(self, day: date) -> list[Member]:
+        used = select(transactions.c.member_id).where(
+            transactions.c.is_deleted.is_(False), transactions.c.date < day
+        )
+        return list(
+            self.db.scalars(
+                select(Member).where(users.c.id.in_(used)).order_by(users.c.created_at)
+            )
+        )
 
     def get_many(self, member_ids: set[UUID]) -> dict[UUID, Member]:
         if not member_ids:
@@ -149,6 +201,18 @@ class SqlBudgets:
             self.db.scalars(
                 select(Budget)
                 .where(budgets.c.is_deleted.is_(False))
+                .order_by(budgets.c.created_at)
+            )
+        )
+
+    def used_before(self, day: date) -> list[Budget]:
+        used = select(transactions.c.budget_id).where(
+            transactions.c.is_deleted.is_(False), transactions.c.date < day
+        )
+        return list(
+            self.db.scalars(
+                select(Budget)
+                .where(budgets.c.id.in_(used))
                 .order_by(budgets.c.created_at)
             )
         )
@@ -237,14 +301,19 @@ class SqlTransactions:
         return {member: int(total) for member, total in self.db.execute(statement)}
 
     def page(
-        self, start: date, end: date, offset: int, limit: int
+        self,
+        start: date,
+        end: date,
+        offset: int,
+        limit: int,
+        filters: HistoryFilter | None = None,
     ) -> list[tuple[Transaction, Budget]]:
         rows = self.db.execute(
-            select(Transaction, Budget)
-            .join(budgets, budgets.c.id == transactions.c.budget_id)
+            _joined(Transaction, Budget)
             .where(
                 transactions.c.is_deleted.is_(False),
                 transactions.c.date.between(start, end),
+                *matching(filters),
             )
             .order_by(transactions.c.date.desc(), transactions.c.created_at.desc())
             .offset(offset)
@@ -252,16 +321,58 @@ class SqlTransactions:
         ).all()
         return [(row[0], row[1]) for row in rows]
 
-    def count(self, start: date, end: date) -> int:
+    def count(
+        self, start: date, end: date, filters: HistoryFilter | None = None
+    ) -> int:
         total = self.db.scalar(
-            select(func.count())
-            .select_from(transactions)
-            .where(
+            _joined(func.count()).where(
                 transactions.c.is_deleted.is_(False),
                 transactions.c.date.between(start, end),
+                *matching(filters),
             )
         )
         return int(total or 0)
+
+    def months_before(
+        self,
+        day: date,
+        filters: HistoryFilter | None = None,
+        since: date | None = None,
+    ) -> list[tuple[int, int, int, int, int]]:
+        year = func.extract("year", transactions.c.date)
+        month = func.extract("month", transactions.c.date)
+        amount = transactions.c.amount
+        spent = case((and_(counted(), amount < 0), -amount), else_=0)
+        earned = case((and_(counted(), amount > 0), amount), else_=0)
+        rows = self.db.execute(
+            _joined(year, month, func.count(), func.sum(spent), func.sum(earned))
+            .where(
+                transactions.c.is_deleted.is_(False),
+                transactions.c.date < day,
+                transactions.c.date >= (since or date.min),
+                *matching(filters),
+            )
+            .group_by(year, month)
+            .order_by(year.desc(), month.desc())
+        ).all()
+        return [tuple(int(value) for value in row) for row in rows]  # type: ignore[misc]
+
+    def spending_by_budget(
+        self, start: date, end: date, filters: HistoryFilter | None = None
+    ) -> list[tuple[UUID, str, int]]:
+        total = func.sum(-transactions.c.amount)
+        rows = self.db.execute(
+            _joined(budgets.c.id, budgets.c.name, total)
+            .where(
+                counted(),
+                transactions.c.amount < 0,
+                transactions.c.date.between(start, end),
+                *matching(filters),
+            )
+            .group_by(budgets.c.id, budgets.c.name)
+            .order_by(total.desc())
+        ).all()
+        return [(budget_id, name, int(amount)) for budget_id, name, amount in rows]
 
     def actual_by_budget(self, start: date, end: date) -> dict[UUID, int]:
         rows = self.db.execute(
