@@ -13,22 +13,21 @@ from sqlalchemy import Engine
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
-from app.auth import passwords
+from app.adapters.persistence.repositories import SqlUnitOfWork, make_engine
+from app.adapters.persistence.tables import metadata
+from app.adapters.security import Argon2Hasher
+from app.application.seed import seed
 from app.config import Settings
-from app.db import Base, make_engine
 from app.main import create_app
-from app.services.seed import seed
 from tests.helpers import FakeClock
 
 START = datetime(2026, 9, 28, 10, 0, tzinfo=UTC)
 
 
-@pytest.fixture(autouse=True)
-def cheap_hashing(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest.fixture
+def hasher() -> Argon2Hasher:
     """Argon2id with a tiny work factor. Same algorithm and format, far faster."""
-    monkeypatch.setattr(
-        passwords, "hasher", PasswordHasher(time_cost=1, memory_cost=8, parallelism=1)
-    )
+    return Argon2Hasher(PasswordHasher(time_cost=1, memory_cost=8, parallelism=1))
 
 
 @pytest.fixture
@@ -48,7 +47,7 @@ def engine() -> Iterator[Engine]:
         poolclass=StaticPool,
         connect_args={"check_same_thread": False},
     )
-    Base.metadata.create_all(engine)
+    metadata.create_all(engine)
     yield engine
     engine.dispose()
 
@@ -59,12 +58,27 @@ def db(engine: Engine) -> Iterator[Session]:
         yield session
 
 
-@pytest.fixture
-def app(settings: Settings, engine: Engine, clock: FakeClock) -> FastAPI:
+def seed_database(
+    engine: Engine, settings: Settings, hasher: Argon2Hasher, clock: FakeClock
+) -> None:
     with Session(engine) as session:
-        seed(session, settings, clock.now())
+        seed(
+            SqlUnitOfWork(session),
+            hasher,
+            admin_username=settings.default_admin_username,
+            admin_password=settings.default_admin_password,
+            timezone=settings.default_timezone,
+            now=clock.now(),
+        )
         session.commit()
-    return create_app(settings, engine=engine, clock=clock)
+
+
+@pytest.fixture
+def app(
+    settings: Settings, engine: Engine, clock: FakeClock, hasher: Argon2Hasher
+) -> FastAPI:
+    seed_database(engine, settings, hasher, clock)
+    return create_app(settings, engine=engine, clock=clock, hasher=hasher)
 
 
 @pytest.fixture

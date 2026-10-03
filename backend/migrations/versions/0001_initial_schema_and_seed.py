@@ -12,9 +12,11 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.orm import Session
 
+from app.adapters.persistence.repositories import SqlUnitOfWork
+from app.adapters.persistence.tables import UTCDateTime
+from app.adapters.security import Argon2Hasher
+from app.application.seed import seed
 from app.config import settings_from_env
-from app.db import UTCDateTime
-from app.services.seed import seed
 
 revision: str = "0001"
 down_revision: str | None = None
@@ -147,9 +149,17 @@ def upgrade() -> None:
 
 
 def _seed() -> None:
-    """Insert the household and the first admin inside this migration's transaction."""
+    """Insert the household and first admin inside this migration's transaction."""
+    settings = settings_from_env()
     with Session(bind=op.get_bind()) as db:
-        seed(db, settings_from_env(), datetime.now(UTC))
+        seed(
+            SqlUnitOfWork(db),
+            Argon2Hasher(),
+            admin_username=settings.default_admin_username,
+            admin_password=settings.default_admin_password,
+            timezone=settings.default_timezone,
+            now=datetime.now(UTC),
+        )
         db.flush()
 
 
