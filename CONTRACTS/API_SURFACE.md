@@ -1,947 +1,472 @@
-# Venn Manager — Backend API Contract v1
+# Venn Manager — API Contract
 
-## General
-
-- **Base URL:** `/api/v1`
-- **Transport:** REST over HTTP. Flask + SQLAlchemy backend. Preact frontend consumes this API.
-- **Design principle:** Hexagonal. This contract defines the **ports** (endpoints, request/response shapes). Domain logic (projections, month detection, concept validation) lives in a core layer independent of Flask, JSON, or HTTP. Adapters (Flask routes, SQLAlchemy repositories) implement these ports. A change to color theme logic must never require modifying an API route definition.
-- **Auth mechanism:** Session-based via cookies. No JWT.
-- **Currency note:** All monetary values are `DECIMAL(10,2)`. The currency symbol is a display-only setting and is never used in calculations. Assume `0.1 + 0.2 = 0.3`.
+Endpoints, shapes and errors. Behavior lives in FRONTEND.md. Rules and formulas live in BACKEND.md.
 
 ---
 
-## Response Envelope
+## 0. Conventions
 
-Every response, regardless of HTTP status code, follows this exact shape:
+| Topic | Rule |
+|---|---|
+| Base URL | `/api/v1`. The SPA and the API are served from one origin |
+| Format | JSON in and out. Mutating requests must send `Content-Type: application/json`, otherwise `400 VALIDATION` |
+| Auth | Session cookie, set by `POST /auth/login`. `HttpOnly`, `SameSite=Lax`, `Secure` in production. No bearer tokens |
+| Household | One per deployment. Never part of a path |
+| IDs | UUID v4 strings |
+| Money | Integer **cents**, signed: `-8412` is −84.12. Type `Cents` below. Range `-9_999_999_999` to `9_999_999_999` |
+| Dates | `YYYY-MM-DD`, household-local |
+| Timestamps | ISO 8601 with offset, e.g. `2026-09-28T21:04:00+02:00` |
+| Month key | `YYYY-MM` |
+| Field names | camelCase |
+| Success body | The resource itself. No envelope |
+| Delete success | `204`, empty body |
+| Error body | `{ "code": string, "message": string, "field"?: string }` (§ 11) |
+| Paging | `?page=1&size=50`. `page` ≥ 1. `size` 1–200, default 50. Response `Page<T>` |
+| Revision | Every successful response carries `X-Ledger-Rev: <int>` (BACKEND.md § 10) |
 
-```json
-{
-  "data": <object | array | null>,
-  "error": <{ "code": "STRING_CODE", "message": "Human readable description" } | null>,
-  "meta": <object | null>
-}
+```ts
+type UUID = string;
+type Cents = number;          // integer
+type ISODate = string;        // "2026-09-28"
+type ISODateTime = string;    // "2026-09-28T21:04:00+02:00"
+type MonthKey = string;       // "2026-09"
+
+interface Page<T> { items: T[]; page: number; size: number; total: number; }
 ```
-
-- On success: `error` is `null`. `data` contains the payload.
-- On error: `data` is `null`. `error` contains the code and message.
-- `meta` is used for pagination info. `null` when not applicable.
-
-HTTP status codes are still used for transport semantics (200, 201, 401, 403, 404, 409, 410, 422, 500), but the frontend always parses the same JSON structure.
-
-### Error Codes
-
-| code                | HTTP | Meaning                          |
-|---------------------|------|----------------------------------|
-| UNAUTHORIZED        | 401  | Not authenticated                |
-| FORBIDDEN           | 403  | Authenticated but not permitted  |
-| PASSWORD_CHANGE_REQUIRED | 403 | Must change password before proceeding |
-| NOT_FOUND           | 404  | Resource does not exist          |
-| CONFLICT            | 409  | Duplicate or state conflict      |
-| GONE                | 410  | Target was soft-deleted. Message: "Record not available anymore." |
-| VALIDATION_ERROR    | 422  | Request body failed validation   |
-| INTERNAL_ERROR      | 500  | Unexpected server error          |
-
-### Pagination
-
-Query parameters on list endpoints:
-
-- `page` — integer, 1-indexed. Default: `1`.
-- `q` — integer (`10`, `20`, `50`) or the literal string `all`. Default: `10`.
-
-When `q` is numeric, `meta` contains:
-
-```json
-{
-  "meta": {
-    "page": 1,
-    "per_page": 10,
-    "total": 42,
-    "total_pages": 5
-  }
-}
-```
-
-When `q=all`, `per_page` equals the total count and `total_pages` is `1`.
-
-### Date/Time Format
-
-- Dates: `YYYY-MM-DD`
-- Timestamps: ISO 8601 UTC, e.g. `2025-07-15T10:30:00Z`
-- Month identifiers: `YYYY-MM`, e.g. `2025-07`
 
 ---
 
-## 1. auth
+## 1. Shapes
 
-Handles login, logout, session validation, and password changes.
+### 1.1 Period
 
-### POST /api/v1/auth/login
+The current month in the household timezone (BACKEND.md § 3).
 
-Authenticates a user and establishes a session cookie.
-
-**Request body:**
-```json
-{
-  "username": "string",
-  "password": "string"
+```ts
+interface Period {
+  month: MonthKey;      // "2026-09"
+  start: ISODate;       // "2026-09-01"
+  end: ISODate;         // "2026-09-30"
+  today: ISODate;       // household-local date
+  daysInMonth: number;
 }
 ```
 
-**Success (200):**
-```json
-{
-  "data": {
-    "user": {
-      "id": 1,
-      "username": "admin",
-      "real_name": "Administrator",
-      "is_admin": true
-    },
-    "must_change_password": true
-  },
-  "error": null,
-  "meta": null
+### 1.2 Member
+
+```ts
+interface Member {
+  id: UUID;
+  username: string;
+  realName: string;
+  initial: string;          // first character of realName, uppercased
+  color: string;            // avatar tint, assigned by the server
+  role: "admin" | "member";
+  status: "active" | "removed";
+  spentThisMonth: Cents;    // ≥ 0 (BACKEND.md § 4.5)
 }
 ```
 
-Sets the session cookie. `must_change_password` is derived at login (see Business Logic § Force Password Change). It is not a stored database flag.
+### 1.3 Household
 
-**Error (401):**
-```json
-{
-  "data": null,
-  "error": { "code": "UNAUTHORIZED", "message": "Invalid username or password" },
-  "meta": null
+```ts
+interface Household {
+  name: string;
+  currencySign: string;       // 0–8 characters
+  timezone: string;           // IANA, e.g. "Europe/Berlin"
+  openingBalance: Cents;
+  showMemberIncome: boolean;
+  members: Member[];          // active and removed
 }
 ```
 
-A soft-deleted user cannot log in. The response is the same 401 as for invalid credentials.
+### 1.4 Budget
 
-### POST /api/v1/auth/logout
+A concept and its budget are one resource. The name is the concept.
 
-Clears the session cookie and invalidates the session server-side.
+```ts
+interface Schedule {
+  repeat: "once" | "weekly" | "biweekly" | "monthly";
+  anchor: ISODate;            // first (or only) due date
+}
 
-Permitted while `must_change_password` is true, alongside `POST /api/v1/auth/password`. A restricted session must still be able to end itself and let someone else sign in.
-
-**Success (200):**
-```json
-{
-  "data": null,
-  "error": null,
-  "meta": null
+interface Budget {
+  id: UUID;
+  name: string;
+  amount: Cents;              // signed; persists across months
+  schedule: Schedule | null;
+  goal: boolean;
+  createdAt: ISODateTime;
+  // derived for the current period (BACKEND.md § 4.2):
+  actual: Cents;
+  projected: Cents;
+  remaining: Cents;           // projected − actual
+  over: boolean;
+  overBy: Cents;              // ≥ 0
+  progressPct: number;        // 0–100
 }
 ```
 
-### GET /api/v1/auth/session
+### 1.5 Transaction
 
-Returns the current session state. Used by the frontend on load to determine authentication.
-
-**Success (200):**
-Same shape as login success response.
-
-**Error (401):**
-```json
-{
-  "data": null,
-  "error": { "code": "UNAUTHORIZED", "message": "No active session" },
-  "meta": null
+```ts
+interface Transaction {
+  id: UUID;
+  payee: string;
+  budgetId: UUID;
+  category: string;           // the budget's current name
+  categoryDeleted: boolean;
+  amount: Cents;              // signed, never 0
+  memberId: UUID;
+  date: ISODate;
+  createdAt: ISODateTime;
+  updatedAt: ISODateTime;
+  archived: boolean;          // date before the current period
 }
 ```
 
-### POST /api/v1/auth/password
+A transaction is read-only when `archived` or `categoryDeleted` is true.
 
-Changes the current user's password. This and `POST /api/v1/auth/logout` are the **only endpoints permitted** when `must_change_password` is true. Every other endpoint returns `PASSWORD_CHANGE_REQUIRED` until the password is changed.
+### 1.6 Upcoming item
 
-**Request body:**
-```json
-{
-  "current_password": "string",
-  "new_password": "string"
+```ts
+interface UpcomingItem {
+  budgetId: UUID;
+  name: string;
+  dueDate: ISODate;
+  amount: Cents;              // the budget amount, signed
+  actual: Cents;              // signed, current period
+  soon: boolean;              // overdue or due within 3 days
+  overdue: boolean;
 }
 ```
 
-**Success (200):**
-```json
-{
-  "data": null,
-  "error": null,
-  "meta": null
+### 1.7 Forecast and budget totals
+
+```ts
+interface Forecast {
+  startCash: Cents;
+  planned: Cents;
+  transactionsNet: Cents;
+  transactionCount: number;
+  total: Cents;               // startCash + planned + transactionsNet
+}
+
+interface BudgetTotals {
+  limit: Cents;               // ≥ 0
+  spent: Cents;               // ≥ 0
+  leftToSpend: Cents;         // limit − spent, may be negative
+  spentPct: number;           // 0–100
 }
 ```
 
-**Error (401):** `current_password` is incorrect.
-**Error (422):** `new_password` does not meet the policy — it must be 8 to 128 characters and must differ from `current_password`. The same bounds apply to every other password field in this API.
+### 1.8 Activity entry
+
+```ts
+type ActivityTarget =
+  | { type: "transaction"; id: UUID; archived: boolean; month: MonthKey }
+  | { type: "budget"; id: UUID; goal: boolean }
+  | { type: "member"; id: UUID }
+  | { type: "settings"; section: "currency" | "household" | "members" | "budgets" }
+  | { type: "none" };
+
+type ActivityAction =
+  | "tx.create" | "tx.update" | "tx.delete" | "tx.bulkDelete"
+  | "budget.create" | "budget.rename" | "budget.amount" | "budget.schedule"
+  | "budget.goal" | "budget.delete"
+  | "member.invite" | "member.update" | "member.remove"
+  | "settings.currency" | "settings.name" | "settings.timezone"
+  | "settings.openingBalance" | "settings.memberIncome";
+
+interface ActivityEntry {
+  id: UUID;
+  actorId: UUID;
+  action: ActivityAction;
+  params: Record<string, string | number | boolean>;
+  at: ISODateTime;
+  target: ActivityTarget;
+}
+```
+
+`params` per action. Names are snapshots taken when the entry was written.
+
+| Action | params |
+|---|---|
+| `tx.create`, `tx.update`, `tx.delete` | `payee` |
+| `tx.bulkDelete` | `count` |
+| `budget.create`, `budget.schedule`, `budget.delete` | `name` |
+| `budget.rename` | `oldName`, `name` |
+| `budget.amount` | `name`, `amount` |
+| `budget.goal` | `name`, `goal` |
+| `member.invite`, `member.update`, `member.remove` | `name` |
+| `settings.currency` | `sign` |
+| `settings.name` | `name` |
+| `settings.timezone` | `timezone` |
+| `settings.openingBalance` | `amount` |
+| `settings.memberIncome` | `enabled` |
+
+The target is computed when the entry is read, so it reflects the current state: a deleted transaction or a removed member yields `none`.
+
+### 1.9 History
+
+```ts
+interface HistoryMonth {
+  month: MonthKey;
+  matchCount: number;         // rows matching the filters
+  totalCount: number;         // rows in the month without filters
+  spent: Cents;               // ≥ 0
+  earned: Cents;              // ≥ 0
+}
+
+interface Breakdown {
+  month: MonthKey;
+  spent: Cents;
+  earned: Cents;
+  slices: { budgetId: UUID; category: string; amount: Cents; pct: number }[];
+}
+
+interface HistoryFacets {
+  categories: { budgetId: UUID; name: string; deleted: boolean }[];
+  members: Member[];
+}
+```
+
+### 1.10 Balance
+
+```ts
+interface Balance {
+  balance: Cents;
+  monthIn: Cents;             // ≥ 0
+  monthOut: Cents;            // ≥ 0
+  members: { memberId: UUID; monthIn: Cents; allTimeIn: Cents }[] | null;  // null when showMemberIncome is off
+}
+```
+
+### 1.11 Session
+
+```ts
+interface Session {
+  member: Member;
+  mustChangePassword: boolean;
+  preferences: { language: "en" | "es" | null; theme: "light" | "dark" | "system" };
+}
+```
+
+`language: null` means the member never picked one. The client then follows the browser (FRONTEND.md § 11.2).
 
 ---
 
-## 2. current_month
+## 2. Auth
 
-Tracks the application's current month and whether a month switch is pending.
+The gate and session rules are in BACKEND.md § 8.
 
-### GET /api/v1/current-month
+| Method | Path | Body | Success | Errors |
+|---|---|---|---|---|
+| POST | `/auth/login` | `{ username, password }` | `200 Session`, sets the cookie | `401 UNAUTHORIZED` "Invalid username or password". Same for removed members |
+| POST | `/auth/logout` | — | `204`, clears the cookie, deletes the session | `401` |
+| GET | `/auth/session` | — | `200 Session` | `401`, `403 PASSWORD_CHANGE_REQUIRED` |
+| POST | `/auth/password` | `{ currentPassword, newPassword }` | `204` | `400 VALIDATION` (`field`: `currentPassword` when wrong, `newPassword` when outside 8–128). The new password may equal the current one |
 
-Returns the server's current month and whether the user needs to acknowledge a month change.
-
-**Success (200):**
-```json
-{
-  "data": {
-    "current_month": "2025-07",
-    "last_acknowledged_month": "2025-06",
-    "needs_switch": true,
-    "earliest_month": "2025-03"
-  },
-  "error": null,
-  "meta": null
-}
-```
-
-- `current_month`: derived from server date.
-- `last_acknowledged_month`: the last month the user confirmed. Stored in settings (see § settings). This is the user's **working month**: Home and Budget operate on it, and History treats every earlier month as a previous month.
-- `needs_switch`: `true` when `current_month != last_acknowledged_month`.
-- `earliest_month`: the month of the oldest non-deleted transaction, or `null` if there are none. History offers months from `earliest_month` up to the month before `last_acknowledged_month`. If that range is empty, History shows "No previous months to show".
-
-### POST /api/v1/current-month/switch
-
-Acknowledges the month change. Updates `last_acknowledged_month` to match `current_month`. **No data modification occurs.** No transactions are archived. No budget dates are altered. This is purely a state signal.
-
-**Success (200):**
-```json
-{
-  "data": {
-    "current_month": "2025-07",
-    "last_acknowledged_month": "2025-07",
-    "needs_switch": false,
-    "earliest_month": "2025-03"
-  },
-  "error": null,
-  "meta": null
-}
-```
-
-**Error (409):** `current_month` already equals `last_acknowledged_month`. Nothing to switch.
+While a session must change its password, only `POST /auth/password` and `POST /auth/logout` succeed. Every other endpoint returns `403 PASSWORD_CHANGE_REQUIRED`.
 
 ---
 
-## 3. settings
+## 3. Me
 
-All configuration: global settings, per-user profile settings, user management, and concept management.
+| Method | Path | Body | Success | Errors |
+|---|---|---|---|---|
+| PATCH | `/me` | `Partial<{ username, realName, language, theme }>` | `200 Session` | `400 VALIDATION`, `409 DUPLICATE_NAME` (`field`: `username`) |
 
-### 3.1 General Settings
-
-#### GET /api/v1/settings
-
-Returns all settings relevant to the current user: global settings merged with user-specific settings.
-
-**Success (200):**
-```json
-{
-  "data": {
-    "currency": "$",
-    "language": "en",
-    "theme": "dark",
-    "last_acknowledged_month": "2025-07",
-    "username": "admin",
-    "real_name": "Administrator"
-  },
-  "error": null,
-  "meta": null
-}
-```
-
-#### PATCH /api/v1/settings
-
-Updates one or more settings. The backend determines scope (global vs per-user) based on the key.
-
-**Request body:**
-```json
-{
-  "currency": "€",
-  "language": "es"
-}
-```
-
-**Success (200):**
-```json
-{
-  "data": {
-    "currency": "€",
-    "language": "es"
-  },
-  "error": null,
-  "meta": null
-}
-```
-
-**Error (403):** The setting requires admin and the current user is not admin.
-**Error (409):** `username` is already taken (including by a soft-deleted user).
-**Error (422):** Invalid value (e.g. currency string exceeds one grapheme cluster), unknown key, or a read-only key.
-
-**Persistence requirement:** All settings changes must be written to the database. A page refresh must reflect the updated values. No setting may exist only in frontend state.
-
-**Setting scopes:**
-
-| key                      | scope    | requires_admin | writable via PATCH |
-|--------------------------|----------|----------------|--------------------|
-| currency                 | global   | false          | yes                |
-| language                 | per-user | false          | yes                |
-| theme                    | per-user | false          | yes                |
-| username                 | profile  | false          | yes                |
-| real_name                | profile  | false          | yes                |
-| last_acknowledged_month  | per-user | false          | no (only via `POST /current-month/switch`) |
-
-- `profile` keys are the current user's own `username` and `real_name`. They are stored on the `users` table, not in `settings`. This is how the Profile screen changes them, without a separate endpoint ("profile belongs to settings"). `GET /settings` also returns them.
-- `language`: one of the shipped locales (`en`, `es`).
-- `theme`: one of `light`, `dark`, `system`.
-- User management is not a setting. It is gated by `is_admin` on `/settings/users` (§ 3.2).
-
-Currency changes affect all users. The frontend shows a confirmation dialog before calling this endpoint, but the backend does not enforce that confirmation.
-
-### 3.2 User Management
-
-All endpoints under this path require the admin role. Non-admin users receive `FORBIDDEN`.
-
-#### GET /api/v1/settings/users
-
-Lists all non-deleted users.
-
-**Success (200):**
-```json
-{
-  "data": [
-    {
-      "id": 1,
-      "username": "admin",
-      "real_name": "Administrator",
-      "is_admin": true
-    },
-    {
-      "id": 2,
-      "username": "alice",
-      "real_name": "Alice",
-      "is_admin": false
-    }
-  ],
-  "error": null,
-  "meta": null
-}
-```
-
-Password hashes are never returned.
-
-#### POST /api/v1/settings/users
-
-Creates a new user.
-
-**Request body:**
-```json
-{
-  "username": "string",
-  "real_name": "string",
-  "password": "string",
-  "is_admin": false
-}
-```
-
-**Success (201):**
-```json
-{
-  "data": {
-    "id": 3,
-    "username": "bob",
-    "real_name": "Bob",
-    "is_admin": false
-  },
-  "error": null,
-  "meta": null
-}
-```
-
-**Error (409):** Username already exists.
-**Error (422):** Validation failure (missing fields, or a password outside the 8–128 character policy).
-
-#### PATCH /api/v1/settings/users/:id
-
-Updates a user. Admin can change real_name, password, and is_admin for any user.
-
-**Request body (all fields optional):**
-```json
-{
-  "real_name": "string",
-  "password": "string",
-  "is_admin": true
-}
-```
-
-**Success (200):**
-```json
-{
-  "data": {
-    "id": 2,
-    "username": "alice",
-    "real_name": "Alice Updated",
-    "is_admin": false
-  },
-  "error": null,
-  "meta": null
-}
-```
-
-**Error (403):** Removing `is_admin` from the last remaining admin.
-**Error (404):** User not found.
-**Error (410):** User is soft-deleted. Message: "Record not available anymore."
-**Error (422):** Validation failure.
-
-#### DELETE /api/v1/settings/users/:id
-
-**Soft-deletes** a user. Sets `is_deleted = true` and invalidates all of that user's sessions. The row stays, so records keep a valid `user_id`. Their username resolves normally and is rendered with a faint "(deleted)" tag. A soft-deleted user cannot log in. Their username stays reserved and cannot be reused.
-
-**Success (200):**
-```json
-{
-  "data": null,
-  "error": null,
-  "meta": null
-}
-```
-
-**Error (404):** User not found.
-**Error (403):** Attempting to delete the last admin, or attempting to delete oneself.
-**Error (410):** User already soft-deleted.
-
-### 3.3 Concept Management
-
-Concepts are the predefined categories that records reference. Users cannot free-type a concept on a record; they must select from existing concepts.
-
-#### GET /api/v1/settings/concepts
-
-Lists concepts. Excludes soft-deleted by default.
-
-**Query parameters:**
-- `flow` — optional filter: `in` or `out`
-- `include_deleted` — optional boolean, default `false`
-
-**Success (200):**
-```json
-{
-  "data": [
-    {
-      "id": 1,
-      "name": "Groceries",
-      "flow": "out",
-      "created_by": "admin",
-      "created_by_is_deleted": false,
-      "created_at": "2025-07-01T08:00:00Z",
-      "is_deleted": false
-    },
-    {
-      "id": 2,
-      "name": "Salary",
-      "flow": "in",
-      "created_by": "admin",
-      "created_by_is_deleted": false,
-      "created_at": "2025-07-01T08:00:00Z",
-      "is_deleted": false
-    }
-  ],
-  "error": null,
-  "meta": null
-}
-```
-
-Concepts are a small reference list. This endpoint is not paginated and returns the full list (`meta: null`). The Concepts grid filters it client-side. Pickers use the default (non-deleted) list. The Concepts screen uses `include_deleted=true` when the user asks to see deleted concepts. Those are rendered with a faint "(deleted)" tag.
-
-#### POST /api/v1/settings/concepts
-
-Creates a concept.
-
-**Request body:**
-```json
-{
-  "name": "string (max 64 chars)",
-  "flow": "in | out"
-}
-```
-
-**Success (201):**
-```json
-{
-  "data": {
-    "id": 3,
-    "name": "Rent",
-    "flow": "out",
-    "created_by": "admin",
-    "created_at": "2025-07-15T10:00:00Z",
-    "is_deleted": false
-  },
-  "error": null,
-  "meta": null
-}
-```
-
-**Error (409):** A non-deleted concept with the same name and flow already exists. A soft-deleted concept's name can be reused.
-**Error (422):** Name exceeds 64 chars, invalid flow value, or empty name.
-
-#### PATCH /api/v1/settings/concepts/:id
-
-Updates a concept. **Only the `name` field can be changed.** The `flow` field is immutable after creation. To change a concept's flow, delete it and create a new one.
-
-**Request body:**
-```json
-{
-  "name": "string (max 64 chars)"
-}
-```
-
-**Success (200):**
-```json
-{
-  "data": {
-    "id": 3,
-    "name": "Monthly Rent",
-    "flow": "out",
-    "created_by": "admin",
-    "created_at": "2025-07-15T10:00:00Z",
-    "is_deleted": false
-  },
-  "error": null,
-  "meta": null
-}
-```
-
-**Error (404):** Concept not found.
-**Error (409):** Another non-deleted concept already has this name and flow.
-**Error (410):** Concept is soft-deleted. Message: "Record not available anymore."
-**Error (422):** Attempting to modify `flow`, or name exceeds 64 chars.
-
-**Renaming impact:** Renaming a concept affects all records that reference it, since records store `concept_id` and the name is resolved via the foreign key. The frontend must show a confirmation dialog before renaming.
-
-#### DELETE /api/v1/settings/concepts/:id
-
-**Soft-deletes** a concept. Sets `is_deleted = true`. The concept remains in the database to preserve referential integrity with historical records. Soft-deleted concepts do not appear in the concept picker for new records.
-
-Referencing transactions and budgets are **not** mutated. Visibility is derived from the concept's state (see Business Logic § Concept Soft-Delete). The frontend warns before calling this that the concept's budget entries and current-month records will disappear.
-
-**Success (200):**
-```json
-{
-  "data": null,
-  "error": null,
-  "meta": null
-}
-```
-
-**Error (404):** Concept not found.
-**Error (410):** Concept already soft-deleted.
-
-#### DELETE /api/v1/settings/concepts
-
-**Bulk soft-delete** for the multi-select delete on the Concepts screen. It uses a parameter on the collection path, so no new resource is added.
-
-**Query parameters:**
-- `ids` — required. Comma-separated concept ids, 1 to 100 ids.
-
-All-or-nothing: if any id fails, nothing is deleted.
-
-**Success (200):** `data: { "deleted": <count> }`
-**Error (404):** At least one id does not exist.
-**Error (410):** At least one id is already soft-deleted.
-**Error (422):** `ids` missing, malformed, empty, or more than 100.
+An empty body is `400 VALIDATION`.
 
 ---
 
-## 4. records
+## 4. Household
 
-Unified endpoint for both transactions and budgets. The `type` parameter and field distinguish between them. Internally they are separate tables with separate lifecycles; the API presents them through a single port.
+| Method | Path | Body | Success | Errors |
+|---|---|---|---|---|
+| GET | `/household` | — | `200 Household` | |
+| PATCH | `/household` | `Partial<{ name, currencySign, timezone, openingBalance, showMemberIncome }>` | `200 Household` | `400 VALIDATION` |
 
-### Record shape (response)
-
-```json
-{
-  "id": 1,
-  "type": "transaction | budget",
-  "date": "2025-07-15",
-  "concept_id": 3,
-  "concept_name": "Groceries",
-  "concept_flow": "out",
-  "concept_is_deleted": false,
-  "amount": 45.50,
-  "user_id": 1,
-  "username": "admin",
-  "user_is_deleted": false,
-  "created_at": "2025-07-15T10:30:00Z"
-}
-```
-
-- For `type: "budget"`, `amount` may be `null` (a budget entry without a reserved amount).
-- For `type: "transaction"`, `amount` is always a number.
-- `concept_name` and `concept_flow` are resolved from the concepts table via `concept_id`.
-- `concept_is_deleted` and `user_is_deleted` let the frontend render the faint "(deleted)" tag (Business Logic § Concept Soft-Delete, § User Soft-Delete).
-- Soft-deleted records themselves are never returned by any endpoint.
-
-### GET /api/v1/records
-
-Lists records filtered by type, month, and optional search.
-
-**Query parameters:**
-
-| param    | required | description                                    |
-|----------|----------|------------------------------------------------|
-| type     | yes      | `transaction` or `budget`                      |
-| month    | transaction only | `YYYY-MM` — filters transactions by `date`. Required for `type=transaction`. Ignored for `type=budget`. |
-| page     | no       | integer, default `1`                           |
-| q        | no       | `10`, `20`, `50`, or `all`. Default `10`       |
-| search   | no       | substring match against concept name           |
-
-**Success (200):**
-```json
-{
-  "data": [
-    {
-      "id": 1,
-      "type": "transaction",
-      "date": "2025-07-15",
-      "concept_id": 3,
-      "concept_name": "Groceries",
-      "concept_flow": "out",
-      "amount": 45.50,
-      "user_id": 1,
-      "username": "admin",
-      "created_at": "2025-07-15T10:30:00Z"
-    }
-  ],
-  "error": null,
-  "meta": {
-    "page": 1,
-    "per_page": 10,
-    "total": 1,
-    "total_pages": 1
-  }
-}
-```
-
-**Filtering behavior:** Search and month filters are applied server-side. A filter on a given month will not return results from a different month. Results are sorted by `id` ascending (creation order). Sort order cannot be changed.
-
-**Budgets are a standing list.** `type=budget` returns every non-deleted budget whose concept is not deleted, regardless of the budget's `date`. The budget `date` is informational. It is never rewritten by the month switch. The frontend displays it in the working month (Business Logic § Month Switch).
-
-**Transactions: working month vs previous months.** The backend compares `month` with the requesting user's `last_acknowledged_month` (the working month):
-- `month` ≥ working month: records whose concept is soft-deleted are excluded.
-- `month` < working month (History): records whose concept is soft-deleted are included, with `concept_is_deleted: true`.
-
-### POST /api/v1/records
-
-Creates a record.
-
-**Request body:**
-```json
-{
-  "type": "transaction | budget",
-  "date": "2025-07-15",
-  "concept_id": 3,
-  "amount": 45.50
-}
-```
-
-- `type` is required. Routes to the correct table.
-- `amount` is required for `transaction`. Optional (nullable) for `budget`.
-- `concept_id` must reference an existing, non-deleted concept. The concept's `flow` is inherited automatically. The frontend does not send `flow`.
-- `user_id` is derived from the session. Not sent by the frontend.
-
-**Success (201):**
-Returns the created record in standard record shape.
-
-**Error (422):**
-- `concept_id` references a deleted or nonexistent concept.
-- `amount` is missing for a transaction.
-- `date` is invalid.
-- Concept's flow is incompatible (should not happen if frontend filters correctly, but backend validates).
-
-### PATCH /api/v1/records/:id
-
-Updates a record.
-
-**Query parameters:**
-- `type` — required. `transaction` or `budget`. Routes to the correct table.
-
-**Request body (all fields optional):**
-```json
-{
-  "date": "2025-07-16",
-  "concept_id": 4,
-  "amount": 52.00
-}
-```
-
-**Success (200):**
-Returns the updated record in standard record shape.
-
-**Error (404):** Record not found for the given id and type.
-**Error (410):** Record is soft-deleted, or its concept is soft-deleted. Message: "Record not available anymore."
-**Error (422):** Validation failure (same rules as POST).
-
-### DELETE /api/v1/records/:id
-
-**Soft-deletes** a record (`is_deleted = true`). No undo and no restore UI. Soft delete exists for database consistency, not recovery. Physical removal is reserved for a future manual prune CLI.
-
-**Query parameters:**
-- `type` — required. `transaction` or `budget`.
-
-**Success (200):**
-```json
-{
-  "data": null,
-  "error": null,
-  "meta": null
-}
-```
-
-**Error (404):** Record not found.
-**Error (410):** Record already soft-deleted.
-
-### DELETE /api/v1/records
-
-**Bulk soft-delete** for the multi-select delete on Home and Budget. It uses a parameter on the collection path, so no new resource is added.
-
-**Query parameters:**
-- `type` — required. `transaction` or `budget`.
-- `ids` — required. Comma-separated record ids, 1 to 100 ids.
-
-All-or-nothing: if any id fails, nothing is deleted.
-
-**Success (200):** `data: { "deleted": <count> }`
-**Error (404):** At least one id does not exist for the given type.
-**Error (410):** At least one id is already soft-deleted.
-**Error (422):** `type` or `ids` missing, malformed, empty, or more than 100.
+Any member may patch. Each changed field writes its own activity entry.
 
 ---
 
-## 5. projections
+## 5. Members
 
-Read-only computed values for a given month. Computed on-the-fly per request. No stored projection values.
+Writes require the admin role, otherwise `403 FORBIDDEN`. The list is part of `GET /household`.
 
-### GET /api/v1/projections
+| Method | Path | Body | Success | Errors |
+|---|---|---|---|---|
+| POST | `/members` | `{ username, realName, password, isAdmin }` | `201 Member` | `400 VALIDATION`, `409 DUPLICATE_NAME` |
+| PATCH | `/members/{id}` | `Partial<{ realName, password, isAdmin }>` | `200 Member` | `400`, `404`, `410 GONE`, `409 LAST_ADMIN` |
+| DELETE | `/members/{id}` | — | `204` | `404`, `410 GONE`, `409 LAST_ADMIN`, `409 SELF_REMOVAL` |
 
-**Query parameters:**
-- `month` — required. `YYYY-MM`.
+---
 
-**Success (200):**
-```json
-{
-  "data": {
-    "spend_projection": 1250.00,
-    "earn_projection": 3000.00,
-    "savings_projection": 1750.00,
-    "actual_spend": 830.50,
-    "actual_earn": 3000.00,
-    "spend_budget_remaining": 419.50,
-    "earn_budget_remaining": 0.00
-  },
-  "error": null,
-  "meta": null
+## 6. Budgets
+
+| Method | Path | Body | Success | Errors |
+|---|---|---|---|---|
+| GET | `/budgets` | — | `200 { period: Period; items: Budget[] }` | |
+| POST | `/budgets` | `{ name }` | `201 Budget` | `400 VALIDATION`, `409 DUPLICATE_NAME` |
+| PATCH | `/budgets/{id}` | `Partial<{ name, amount, schedule, goal }>` | `200 Budget` | `400`, `404`, `410 GONE`, `409 DUPLICATE_NAME` |
+| DELETE | `/budgets/{id}` | — | `204` | `404`, `410 GONE` |
+
+- `GET` returns every non-deleted budget, goals included, in creation order.
+- `POST` creates the budget with `amount: 0`, no schedule, `goal: false`.
+- `PATCH amount` takes the absolute value, never a delta.
+- `schedule: null` removes the schedule.
+
+---
+
+## 7. Transactions
+
+| Method | Path | Body | Success | Errors |
+|---|---|---|---|---|
+| GET | `/transactions?page&size` | — | `200 Page<Transaction>` | |
+| POST | `/transactions` | `{ payee, budgetId, amount, date?, memberId? }` | `201 Transaction` | `400 VALIDATION`, `400 OUT_OF_PERIOD`, `410 GONE` (budget deleted) |
+| PATCH | `/transactions/{id}` | `Partial<{ payee, budgetId, amount, date, memberId }>` | `200 Transaction` | `400`, `404`, `410 GONE`, `409 READ_ONLY_HISTORY`, `409 CATEGORY_DELETED` |
+| DELETE | `/transactions/{id}` | — | `204` | `404`, `410 GONE`, `409 READ_ONLY_HISTORY`, `409 CATEGORY_DELETED` |
+| POST | `/transactions/bulk-delete` | `{ ids: UUID[] }` (1–500, duplicates collapsed) | `200 { deleted: UUID[]; notFound: UUID[] }` | `400`, `409 READ_ONLY_HISTORY`, `409 CATEGORY_DELETED` |
+
+- `GET` lists the current period only, newest first: `date` descending, then `createdAt` descending. Rows whose budget was deleted are included.
+- `date` defaults to today in the household timezone. It must fall inside the current period.
+- `memberId` defaults to the caller. It must be an active member.
+- `budgetId` must reference a non-deleted budget.
+- Bulk delete is all-or-nothing for the ids it finds. Unknown or already-deleted ids go to `notFound`. If any found id is read-only, nothing is deleted and the request returns `409`.
+
+---
+
+## 8. Overview, upcoming, activity
+
+| Method | Path | Success |
+|---|---|---|
+| GET | `/overview` | `200 Overview` |
+| GET | `/upcoming` | `200 UpcomingItem[]` |
+| GET | `/activity?page&size` | `200 Page<ActivityEntry>`, newest first |
+
+```ts
+interface Overview {
+  period: Period;
+  currencySign: string;
+  budgetTotals: BudgetTotals;
+  forecast: Forecast;
+  upcoming: UpcomingItem[];
+  recentTransactions: Transaction[];   // latest 4 of the current period
+  activity: ActivityEntry[];           // latest 5
 }
 ```
 
-- `spend_projection`: projected total spending for the month.
-- `earn_projection`: projected total earning for the month.
-- `savings_projection`: `earn_projection - spend_projection`.
-- `actual_spend`: sum of transaction amounts with `flow = out` in the given month.
-- `actual_earn`: sum of transaction amounts with `flow = in` in the given month.
-- `spend_budget_remaining`: over budgeted OUT concepts, the sum of `max(0, budget − actual)`, treating a missing actual as 0. The part of `spend_projection` that has not been spent yet. The identity `spend_projection = actual_spend + spend_budget_remaining` always holds.
-- `earn_budget_remaining`: the same sum over budgeted IN concepts. The income still expected to land. There is deliberately no identity with `earn_projection`, because income above a budget is capped out of the projection.
+---
 
-These two fields exist so the UI can show *why* a projection differs from the
-actuals (FRONTEND.md § 1.2). They are derived, never stored.
+## 9. History
 
-Computation logic is defined in Business Logic § Projection Calculation.
+Read-only. Months strictly before the current period.
+
+Shared filters: `q` (case-insensitive substring of payee, category name or member real name), `memberId`, `budgetId`.
+
+| Method | Path | Success | Errors |
+|---|---|---|---|
+| GET | `/history/months?page&size&q&memberId&budgetId` | `200 Page<HistoryMonth>`, newest first. With filters, only months with at least one match | `400` |
+| GET | `/history/months/{month}/transactions?page&size&q&memberId&budgetId` | `200 Page<Transaction>`, newest first | `400`, `404` (not a past month) |
+| GET | `/history/months/{month}/breakdown?q&memberId&budgetId` | `200 Breakdown` | `400`, `404` |
+| GET | `/history/facets` | `200 HistoryFacets` | |
 
 ---
 
-## Business Logic
+## 10. Balance
 
-### Force Password Change
-
-No stored flag. Derived at login.
-
-**Condition:** The provided password hash matches the default seed password hash **AND** the users table contains exactly one user.
-
-When true:
-- Login response includes `must_change_password: true`.
-- Session is established but restricted: all endpoints except `POST /api/v1/auth/password` and `POST /api/v1/auth/logout` return `PASSWORD_CHANGE_REQUIRED` (403).
-- Logout is exempt so a restricted session can still be ended. Without it a user who lands on the forced-change screen cannot switch account without first setting a password.
-- Once the password is changed, the hash no longer matches the default, and the restriction lifts.
-
-If the user later changes their password back to the default, the condition re-triggers only if they are still the sole user. In practice, by that point other users will have been created, so the condition will not fire.
-
-### Projection Calculation
-
-Computed on-the-fly. No cached or stored projection values.
-
-**Inputs:**
-- All non-deleted budget entries whose concept is not deleted. Budgets persist across months and are not filtered by month.
-- All non-deleted transactions in the target month. Transactions whose concept is soft-deleted are excluded when the target month is the working month (or later). They are **included** when it is a previous month, because previous months stay intact (BACKEND.md § 1.2). Their concept's budgets are excluded, so they count as unbudgeted activity.
-- A budget entry with `amount = null` counts as `0`.
-
-**Algorithm:**
-
-```
-spend_projection = 0
-earn_projection = 0
-
-budget_concept_ids = set of concept_ids that have budget entries
-
-For each concept C that has at least one budget entry:
-    budget_amount = sum of budget entry amounts for C (treat null as 0)
-    has_actual    = at least one transaction exists in the target month for C
-    actual_amount = sum of those transaction amounts (only 0 if a 0 was recorded)
-
-    if C.flow == "out":
-        spend_projection += budget_amount if not has_actual
-                            else max(budget_amount, actual_amount)
-    elif C.flow == "in":
-        earn_projection  += budget_amount if not has_actual
-                            else min(budget_amount, actual_amount)
-
-For each transaction T in target month where T.concept_id NOT IN budget_concept_ids:
-    if T.concept_flow == "out":
-        spend_projection += T.amount
-    elif T.concept_flow == "in":
-        earn_projection += T.amount
-
-savings_projection = earn_projection - spend_projection
-```
-
-**Rationale:**
-- `max` and `min` compare a plan against an outcome. When there is no outcome yet there is nothing to compare against, so the plan stands on its own: **a budgeted concept with no transactions projects its budget**, in both flows.
-- This is not the same as `actual_amount = 0`. A recorded `0` transaction *is* an actual, and is compared normally. Only the absence of any transaction falls back to the budget.
-- The OUT branch used to be written as a bare `max(budget_amount, actual_amount)`, which produced the right number by accident — `max(budget, 0)` equals the budget. The IN branch produced `min(budget, 0) = 0`, asserting an income shortfall that had not happened, and made `savings_projection` negative by the entire spend budget on the first day of every month. Coercing a missing actual to zero was the defect; both branches now fall back explicitly.
-- Once transactions exist, spending is pessimistic — `max`: an overspend shows, an underspend still assumes the budget will be reached. Earning is pessimistic the other way — `min`: a shortfall shows, a windfall is capped so the projection never inflates.
-- Transactions for concepts not in the budget are added directly. They represent unbudgeted activity.
-
-### Month Switch
-
-The month switch is a state signal, not a data operation.
-
-- No transactions are archived, moved, or modified.
-- No budget dates are altered. Budget dates are informational. The frontend displays each budget date inside the working month, keeping the stored day and clamping to the month's last day (31 → 30, 29 → 28). The stored day is never lost, so there is no drift (Jan 31 → Feb 28 → Mar 31).
-- No budget amounts are reset. Budget entries persist across months.
-- The only change: `last_acknowledged_month` in settings is updated to match the current month.
-- The "reset" perceived by the user is natural: the new month has no transactions yet, so `actual_spend` and `actual_earn` start at zero. Budget amounts remain, so projections immediately reflect the budget baseline.
-- History is simply a query for transactions in a past month. No separate storage or archiving.
-
-### Soft-Delete (All Entities)
-
-- Users, concepts, transactions and budgets are soft-deleted (`is_deleted = true`). Nothing is hard-deleted through the API. A manual prune CLI is deferred.
-- A soft-deleted record is never returned by any endpoint and never counts in projections.
-- Any `PATCH` or `DELETE` on a soft-deleted target returns `410 GONE` with "Record not available anymore." This is the edit-vs-delete race outcome. Otherwise, last write wins.
-
-### Concept Soft-Delete
-
-- Concepts are soft-deleted (`is_deleted = true`), never hard-deleted.
-- This preserves referential integrity for historical transactions and budgets.
-- Soft-deleted concepts are excluded from the concept picker when creating new records.
-- Soft-deleted concepts still resolve their name and flow when displaying historical records.
-- To change a concept's flow, the user must delete it (soft) and create a new concept with the desired flow.
-- No data cascade. Referencing records keep `is_deleted = false`. Their visibility is derived:
-  - Budget screen: budgets of a deleted concept disappear and stop counting in projections.
-  - Working month (Home): transactions of a deleted concept disappear and stop counting.
-  - Previous months (History): transactions of a deleted concept stay visible with a faint "(deleted)" tag and keep counting.
-- Records of a deleted concept cannot be edited or deleted (`410`).
-
-### User Soft-Delete
-
-- A soft-deleted user cannot log in, and all of their sessions are invalidated.
-- Their records keep `user_id`. The username is rendered with a faint "(deleted)" tag (`user_is_deleted`).
-- Their username stays reserved.
-
-### Settings Persistence
-
-All settings must be persisted to the database on every change. A page refresh, session re-validation, or different client must reflect the current stored values. No setting may exist only in frontend state or session memory.
+| Method | Path | Success |
+|---|---|---|
+| GET | `/balance` | `200 Balance` |
 
 ---
 
-## Database Schema (Reference)
+## 11. Errors
 
-This contract does not mandate database implementation, but the following schema satisfies all requirements:
-
-```
-users
-  id              PK
-  username        UNIQUE NOT NULL
-  real_name       NOT NULL
-  password_hash   NOT NULL
-  is_admin        BOOLEAN DEFAULT false
-  created_at      TIMESTAMP
-  is_deleted      BOOLEAN DEFAULT false
-
-concepts
-  id              PK
-  name            VARCHAR(64) NOT NULL
-  flow            ENUM('in','out') NOT NULL
-  created_by      FK → users.id
-  created_at      TIMESTAMP
-  is_deleted      BOOLEAN DEFAULT false
-
-transactions
-  id              PK
-  date            DATE NOT NULL
-  concept_id      FK → concepts.id
-  amount          DECIMAL(10,2) NOT NULL
-  user_id         FK → users.id
-  created_at      TIMESTAMP
-  is_deleted      BOOLEAN DEFAULT false
-
-budgets
-  id              PK
-  date            DATE NOT NULL
-  concept_id      FK → concepts.id
-  amount          DECIMAL(10,2) NULL
-  user_id         FK → users.id
-  created_at      TIMESTAMP
-  is_deleted      BOOLEAN DEFAULT false
-
-settings
-  id              PK
-  key             VARCHAR NOT NULL
-  value           TEXT NOT NULL
-  user_id         FK → users.id NULLABLE
-  requires_admin  BOOLEAN DEFAULT false
+```json
+{ "code": "VALIDATION", "message": "Amount must not be zero", "field": "amount" }
 ```
 
-- `settings.user_id IS NULL` → global setting.
-- `settings.user_id IS NOT NULL` → per-user setting.
-- `transactions.amount` is always required.
-- `budgets.amount` is nullable (a budget entry may exist without a reserved amount).
-- No `must_change_password` column. Derived at login.
-- No `type` discriminator on a unified records table. Transactions and budgets are separate tables.
+`message` is plain English for logs and debugging. Clients show localized text by `code`. Messages never echo raw input, stack traces, SQL or paths.
+
+| HTTP | code | When |
+|---|---|---|
+| 400 | `VALIDATION` | Bad field, unknown field, empty PATCH, wrong content type. `field` set when one field is at fault |
+| 400 | `OUT_OF_PERIOD` | Transaction date outside the current period |
+| 401 | `UNAUTHORIZED` | No valid session, or wrong login |
+| 403 | `PASSWORD_CHANGE_REQUIRED` | Session must change its password first |
+| 403 | `FORBIDDEN` | Admin-only endpoint |
+| 404 | `NOT_FOUND` | Unknown id, month or route |
+| 405 | `NOT_FOUND` | Unsupported method, reported as 404 |
+| 409 | `DUPLICATE_NAME` | Budget name or username already used. `field` set |
+| 409 | `LAST_ADMIN` | Removing or demoting the last admin |
+| 409 | `SELF_REMOVAL` | An admin removing themselves |
+| 409 | `READ_ONLY_HISTORY` | Changing an archived transaction |
+| 409 | `CATEGORY_DELETED` | Changing a transaction whose budget was deleted |
+| 410 | `GONE` | The target was soft-deleted. Message "Record not available anymore." |
+| 500 | `INTERNAL` | Anything else |
 
 ---
 
-## Endpoint Summary
+## 12. Validation
 
-| Method | Endpoint                        | Auth   | Notes                          |
-|--------|---------------------------------|--------|--------------------------------|
-| POST   | /api/v1/auth/login              | no     | Sets session cookie            |
-| POST   | /api/v1/auth/logout             | yes    | Clears session cookie; permitted during force-change |
-| GET    | /api/v1/auth/session            | yes    | Returns current user state     |
-| POST   | /api/v1/auth/password           | yes    | Permitted during force-change  |
-| GET    | /api/v1/current-month           | yes    | Month state + needs_switch     |
-| POST   | /api/v1/current-month/switch    | yes    | Acknowledges month change      |
-| GET    | /api/v1/settings                | yes    | Merged global + user settings  |
-| PATCH  | /api/v1/settings                | yes    | Update settings                |
-| GET    | /api/v1/settings/users          | admin  | List users                     |
-| POST   | /api/v1/settings/users          | admin  | Create user                    |
-| PATCH  | /api/v1/settings/users/:id      | admin  | Update user                    |
-| DELETE | /api/v1/settings/users/:id      | admin  | Soft-delete user               |
-| GET    | /api/v1/settings/concepts       | yes    | List concepts                  |
-| POST   | /api/v1/settings/concepts       | yes    | Create concept                 |
-| PATCH  | /api/v1/settings/concepts/:id   | yes    | Rename concept (flow immutable)|
-| DELETE | /api/v1/settings/concepts/:id   | yes    | Soft-delete concept            |
-| DELETE | /api/v1/settings/concepts?ids=  | yes    | Bulk soft-delete (max 100)     |
-| GET    | /api/v1/records                 | yes    | List records (type + month)    |
-| POST   | /api/v1/records                 | yes    | Create record                  |
-| PATCH  | /api/v1/records/:id             | yes    | Update record                  |
-| DELETE | /api/v1/records/:id             | yes    | Soft-delete record             |
-| DELETE | /api/v1/records?type=&ids=      | yes    | Bulk soft-delete (max 100)     |
-| GET    | /api/v1/projections             | yes    | Computed projections for month |
+Strings are trimmed before validation. Unknown fields are rejected.
 
-**Total: 23 endpoints.**
+| Field | Rule |
+|---|---|
+| `amount` (transaction) | Integer cents in range, ≠ 0 |
+| `amount` (budget), `openingBalance` | Integer cents in range |
+| `payee` | 1–120 characters |
+| budget `name` | 1–60 characters, unique among non-deleted budgets, case-insensitive |
+| `schedule` | `null`, or `repeat` in the enum and `anchor` a valid date |
+| `goal`, `showMemberIncome`, `isAdmin` | Boolean |
+| `username` | 1–64 characters, unique among all members, removed ones included |
+| `realName` | 1–128 characters |
+| `password`, `newPassword` | 8–128 characters |
+| household `name` | 1–60 characters |
+| `currencySign` | 0–8 characters |
+| `timezone` | A valid IANA zone |
+| `language` | `en`, `es` |
+| `theme` | `light`, `dark`, `system` |
+| `date` | Valid `YYYY-MM-DD`, inside the current period |
+| `ids` (bulk) | 1–500 UUIDs |
+| `page`, `size` | Integers, `page` ≥ 1, `size` 1–200 |
+| `month` (path) | Valid `YYYY-MM` |
+
+---
+
+## 13. Endpoint summary
+
+| Method | Path | Who |
+|---|---|---|
+| POST | `/auth/login` | anyone |
+| POST | `/auth/logout` | member, allowed during forced change |
+| GET | `/auth/session` | member |
+| POST | `/auth/password` | member, allowed during forced change |
+| PATCH | `/me` | member |
+| GET | `/household` | member |
+| PATCH | `/household` | member |
+| POST | `/members` | admin |
+| PATCH | `/members/{id}` | admin |
+| DELETE | `/members/{id}` | admin |
+| GET | `/budgets` | member |
+| POST | `/budgets` | member |
+| PATCH | `/budgets/{id}` | member |
+| DELETE | `/budgets/{id}` | member |
+| GET | `/transactions` | member |
+| POST | `/transactions` | member |
+| PATCH | `/transactions/{id}` | member |
+| DELETE | `/transactions/{id}` | member |
+| POST | `/transactions/bulk-delete` | member |
+| GET | `/overview` | member |
+| GET | `/upcoming` | member |
+| GET | `/activity` | member |
+| GET | `/history/months` | member |
+| GET | `/history/months/{month}/transactions` | member |
+| GET | `/history/months/{month}/breakdown` | member |
+| GET | `/history/facets` | member |
+| GET | `/balance` | member |
+
+**27 endpoints.**

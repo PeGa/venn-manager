@@ -1,141 +1,265 @@
-# Venn Manager — Phase 3: Business Logic & Domain Contract
+# Venn Manager — Backend Contract
 
-This document defines the internal rules, state transitions, and computational logic that bridge the Frontend Contract (Phase 1) and the API Contract (Phase 2). 
+Domain rules and every formula. Endpoints and shapes are in API_SURFACE.md.
 
-## 1. State & Lifecycle Mechanics
+---
 
-### 1.1 Soft-Delete Reality
-Everything (Users, Concepts, Transactions, Budgets) uses logical deletion (`is_deleted = true`). Hard deletion is reserved for a future manual prune CLI (deferred).
+## 1. Scope
 
-Soft deletion exists for database consistency, not recovery. A soft-deleted record disappears from every view and every projection. There is no trash, restore, or undo.
+- One household per deployment. The household row always exists after seeding.
+- Every figure the UI shows is computed per request from stored records. Nothing derived is stored or cached.
+- Money is integer cents everywhere: database, services, API.
 
-**The Golden Rule of Deletion:** A record's `is_deleted` flag only ever reflects if *that specific record* was deleted. It does not reflect the state of its parent concept.
+---
 
-### 1.2 Concept Deletion & The "Ghost" Rule
-When a user soft-deletes a Concept:
-1. The Concept's `is_deleted` flips to `true`.
-2. The Concept vanishes from all pickers/dropdowns.
-3. **No cascade occurs.** Transactions and Budgets referencing this concept are *not* mutated. Their `is_deleted` remains `false`.
+## 2. Data model
 
-This yields the UI agreed in Phase 3 without mutating records. Concept deleted → its budget is gone → its working-month transactions are gone. Previous months stay intact and marked.
+| Table | Columns (besides `id` UUID) | Notes |
+|---|---|---|
+| `household` | `name`, `currency_sign`, `timezone`, `opening_balance`, `show_member_income`, `rev` | Exactly one row |
+| `users` | `username` (unique), `real_name`, `password_hash`, `must_change_password`, `is_admin`, `language` (nullable), `theme`, `color`, `is_removed`, `created_at` | A member. `language` stays null until the member picks one |
+| `sessions` | `token_hash` (unique), `user_id`, `created_at`, `last_seen_at` | Server-side sessions |
+| `budgets` | `name`, `amount`, `schedule_repeat`, `schedule_anchor`, `is_goal`, `is_deleted`, `created_by`, `created_at` | A concept and its budget |
+| `transactions` | `payee`, `budget_id`, `amount`, `member_id`, `date`, `created_by`, `created_at`, `updated_at`, `is_deleted` | |
+| `activity` | `actor_id`, `action`, `params` (JSON), `target_type`, `target_id`, `target_section`, `at` | |
 
-**How the UI handles Ghost Concepts:**
-- **Working Month (Home/Budget):** Queries for the working month (§ 1.4) and the budget list filter out records where `concept.is_deleted = true`. The records vanish from the grid.
-- **History (Previous Months):** The backend query does *not* filter by concept deletion. The transactions remain visible. The frontend detects `concept_is_deleted = true` and renders the concept name with a fainter "(deleted)" suffix. The suffix marks a state and is not part of the name.
-- **Projections:** Budgets of a deleted concept never count. That concept's transactions do not count for the working month. For previous months they still count, as unbudgeted activity, so history is not rewritten retroactively.
-- **Edits:** Records of a deleted concept cannot be edited or deleted. The backend returns `410` "Record not available anymore."
-- **Confirmation:** The frontend confirmation dialog for concept deletion warns that the concept's budget entries and working-month records will disappear.
+Indexes: `transactions(date)`, `transactions(budget_id)`, `transactions(member_id)`, `budgets(name)`, `activity(at)`, `sessions(token_hash)`.
 
-### 1.3 Concurrency & "Last Write Wins"
-The app assumes high trust and low concurrent write volume. 
-- If User A and User B edit the same record, the last `PATCH` request overwrites the first. No optimistic locking.
-- If User A is editing a record, and User B deletes it (soft), User A's subsequent `PATCH` will fail.
-- **Error handling:** The backend checks `is_deleted` before executing an update or delete. If `true`, it returns HTTP 410 Gone with the message: `"Record not available anymore."` The frontend discards local edits, refreshes the grid, and shows the message.
+**Soft delete.** Users, budgets and transactions are never physically removed by the API. Sessions are removed on logout; they are not domain records. Activity entries are never removed.
 
-### 1.4 The Working Month
-Each user's working month is their `last_acknowledged_month`.
-- Home and Budget operate on the working month. Until the user switches, they stay on it even if the calendar has moved on.
-- History covers months strictly before the working month.
-- The backend uses the requesting user's working month to decide between working-month and history semantics (§ 1.2).
+---
 
-## 2. The Projection Engine
+## 3. Period and rollover
 
-Projections are computed on-the-fly per request. No values are cached or stored in the database.
+- **Today** is the current date in the household timezone.
+- The **current period** is the calendar month containing today.
+- A transaction is **archived** when its `date` is before the period start. This is derived, never stored.
+- Rollover needs no job and no snapshot. When the calendar crosses into a new month, the next request computes a new period, last month's transactions become archived, and every figure follows from § 4.
+- Budget amounts, schedules and goal flags persist across months. Only the calculations restart.
+- Changing the timezone takes effect immediately. It only changes what "today" is.
 
-### 2.1 Data Inclusion Rules
-The engine only considers records where:
-1. `record.is_deleted = false`
-2. `concept.is_deleted = false`. Exception: transactions in a month before the working month are kept even if their concept is deleted (§ 1.2).
-3. The record's `date` falls within the target `month` (for transactions) or is an active budget (budgets persist, but their amounts are evaluated against the target month's transactions).
+---
 
-### 2.2 The Math (Per Concept)
-For every concept that has at least one active budget entry:
-- `budget_amount` = sum of active budget amounts for this concept (nulls treated as 0).
-- `has_actual` = whether any active transaction exists for this concept in the target month.
-- `actual_amount` = sum of those transaction amounts.
+## 4. Calculations
 
-**No actual yet (both flows):**
-- Project `budget_amount`. `max` and `min` compare a plan against an outcome; with no outcome there is nothing to compare, so the plan stands alone.
+### 4.1 Counted transactions
 
-**If Concept Flow is OUT (Spend):**
-- Add `max(budget_amount, actual_amount)` to the total spend projection.
+A transaction **counts** when it is not deleted and its budget is not deleted.
 
-**If Concept Flow is IN (Earn):**
-- Add `min(budget_amount, actual_amount)` to the total earn projection.
+Transactions of a deleted budget stay listed, as read-only rows marked `categoryDeleted`. They count nowhere: not in any total, not in past months, not in the start-of-month cash. Deleting a budget therefore changes past balances. That is intended.
 
-"No transactions" is not the same as `actual_amount = 0`: a recorded zero is an
-actual and is compared normally. The OUT branch previously relied on
-`max(budget, 0)` coincidentally equalling the budget, while the IN branch computed
-`min(budget, 0) = 0` and reported an income shortfall that had not happened. Both
-branches now fall back to the budget explicitly.
+### 4.2 Per budget, current period
 
-### 2.3 Unbudgeted Activity
-For every active transaction in the target month where the concept has *no* active budget entries:
-- If Flow is OUT, add `transaction.amount` to total spend projection.
-- If Flow is IN, add `transaction.amount` to total earn projection.
+For every non-deleted budget `b` with signed `amount`:
 
-### 2.4 Final Output
-- `spend_projection` = total spend calculated above.
-- `earn_projection` = total earn calculated above.
-- `savings_projection` = `earn_projection - spend_projection`.
-- `actual_spend` = sum of all active OUT transactions in the month.
-- `actual_earn` = sum of all active IN transactions in the month.
-- `spend_budget_remaining` = over budgeted OUT concepts, sum of `max(0, budget_amount − actual_amount)`, treating a missing actual as 0. The unspent part of the spend projection; `spend_projection = actual_spend + spend_budget_remaining`.
-- `earn_budget_remaining` = the same sum over budgeted IN concepts. The income still expected to land.
+```
+actual    = Σ amount of counted transactions of b dated inside the period
 
-The two `*_budget_remaining` fields are derived in the same pass as the
-projections and exist only so the UI can explain a projection (FRONTEND.md § 1.2).
+projected = max(amount, actual)   if amount > 0
+          = min(amount, actual)   if amount < 0
+          = actual                if amount = 0
 
-## 3. Month Switch Mechanics
+remaining = projected − actual
+over      = (amount ≠ 0) and (projected ≠ amount)
+            or (amount = 0) and (actual ≠ 0)
+overBy    = |actual − amount|  if over, else 0
 
-The month switch is a state signal, not a data mutation. 
+progressPct = 0                                   if amount = 0
+            = 0                                   if actual and amount have opposite signs
+            = min(100, |actual| / |amount| × 100) otherwise
+```
 
-When `POST /api/v1/current-month/switch` is called:
-1. The backend updates the `last_acknowledged_month` setting for the current user to match the server's current month.
-2. **No records are modified.** No transactions are archived. No budget dates are bumped. No budget amounts are reset.
-3. The "reset" the user perceives is purely a side-effect of the new month having zero transactions, while the budget entries (which persist) immediately establish the new baseline for projections.
-4. Budget dates are informational. The Budget grid displays each stored date inside the working month. It keeps the stored day and clamps to the month's last day (31 → 30, 29 → 28). This is a display transform only, so the stored day never drifts.
-5. The frontend polls `GET /api/v1/current-month`. When `needs_switch` is true, it offers the switch dialog. If the user declines, a "Switch to current month" button appears on the Home and Budget grids.
+The budget is the plan. Money moved within the plan does not change the projection. Money moved beyond it replaces the plan.
 
-## 4. Seeding & Bootstrap
+### 4.3 Budget totals ("Left to spend")
 
-On the very first run (first migration), the database is seeded with the following baseline state to allow immediate login and configuration:
+Over non-deleted, **non-goal** budgets:
 
-### 4.1 Users
-- One user created.
-- `username`: `admin`
-- `real_name`: `Administrator`
-- `password`: `admin` (hashed with werkzeug `generate_password_hash` at its default method, scrypt, per AGENTS.md).
-- Username and password are read from `DEFAULT_ADMIN_USERNAME` / `DEFAULT_ADMIN_PASSWORD`, which default to `admin` / `admin`.
-- `is_admin`: `true`
+```
+limit       = Σ −amount               over budgets with amount < 0
+spent       = Σ max(0, −actual)       over budgets with amount ≤ 0
+leftToSpend = limit − spent
+spentPct    = 0 if limit = 0, else min(100, spent / limit × 100)
+```
 
-### 4.2 Settings
-- `currency`: `$` (global, `user_id` = null)
-- `language`: `en` (global default, though users will get their own per-user setting upon creation).
-- `theme`: `system` (global default).
-- `last_acknowledged_month`: The current `YYYY-MM` at the time of migration.
+Goal budgets are money set aside on purpose. They count in the forecast (§ 4.4), not here.
 
-### 4.3 Concepts
-- **Empty.** The app starts with zero concepts. The admin must navigate to the Concepts screen and create them before they can add any records to the Home or Budget screens.
+### 4.4 Forecast
 
-## 5. Validation & Edge Cases
+```
+startCash        = opening_balance
+                 + Σ amount of counted transactions dated before the period start
+transactionsNet  = Σ amount of counted transactions dated inside the period
+transactionCount = number of counted transactions dated inside the period
+planned          = Σ remaining over every non-deleted budget, goals included
+total            = startCash + planned + transactionsNet
+```
 
-### 5.1 Record Creation
-- A transaction/budget cannot be created with a soft-deleted concept. (Backend returns 422).
-- A transaction requires an `amount`. A budget allows `amount = null`.
-- The `flow` is never sent by the frontend for records; it is strictly inherited from the concept. If the frontend somehow sends a mismatched flow, the backend ignores it and uses the concept's flow.
+Equivalently, `total = startCash + Σ projected`. Money left unspent at month end is part of the next month's `startCash`.
 
-### 5.2 Concept Modification
-- A concept's `flow` is immutable after creation. Attempting to `PATCH` a concept with a new `flow` returns 422.
-- Renaming a concept (`PATCH` with new `name`) is allowed. Because records reference the concept via `concept_id`, the rename instantly reflects across all historical and current records without requiring a cascade update.
+### 4.5 Balance and members
 
-### 5.3 User Management
-- An admin cannot delete themselves.
-- An admin cannot delete the last remaining admin user, nor remove `is_admin` from them.
-- When a user is soft-deleted, their `is_deleted` flips to `true`. Their historical records retain the `user_id`. The frontend resolves the username and renders it faintly or with a "(deleted)" tag.
-- A soft-deleted user cannot log in, their sessions are invalidated, and their username stays reserved.
-- Each user edits their own `username` and `real_name` through `PATCH /api/v1/settings` (profile keys).
+```
+balance        = startCash + transactionsNet
+monthIn        = Σ amount of counted transactions in the period with amount > 0
+monthOut       = Σ −amount of counted transactions in the period with amount < 0
+spentThisMonth = monthOut restricted to transactions with that member_id
+member monthIn   = monthIn restricted to that member_id
+member allTimeIn = Σ amount of all counted transactions of that member with amount > 0
+```
 
-### 5.4 Bulk Deletion
-- Multi-select delete uses `DELETE /api/v1/records?type=&ids=` and `DELETE /api/v1/settings/concepts?ids=`.
-- A request accepts at most 100 ids. It is all-or-nothing: any missing id → 404, any already-deleted id → 410.
+`Balance.members` lists members with `allTimeIn > 0`, removed members included, ordered by `allTimeIn` descending. It is `null` when `show_member_income` is false.
+
+### 4.6 History
+
+For a past month, after filters:
+
+```
+matchCount = matching non-deleted transactions, counted or not
+totalCount = non-deleted transactions of the month, no filters
+spent      = Σ −amount of matching counted transactions with amount < 0
+earned     = Σ amount of matching counted transactions with amount > 0
+slices     = per budget, Σ −amount of matching counted transactions with amount < 0,
+             amount descending, pct = round_half_up(slice / spent × 100)
+```
+
+Search `q` matches payee, budget name and member real name, case-insensitive. `%` and `_` in `q` are escaped, so they cannot widen the match.
+
+Facets list every budget and every member that appears in at least one archived, non-deleted transaction.
+
+### 4.7 Worked example
+
+Budgets: Paycheck `+100`, Groceries `−10`, Car repair `−30`, Rent `−20`. Opening balance 0.
+
+| Event | transactionsNet | planned | total |
+|---|---|---|---|
+| Month starts | 0 | +100 −10 −30 −20 = +40 | 40 |
+| Groceries −5 | −5 | groceries −5 remaining → +45 | 40 |
+| Groceries −25 more (−30 against −10) | −30 | groceries projected −30, remaining 0 → +50 | 20 |
+| Paycheck +100 | +70 | car −30, rent −20 → −50 | 20 |
+| Month ends without the car repair | — | — | next `startCash` = 70 |
+
+Signed transactions inside one budget net out. Paycheck `+100` receiving an advance `+10`, the pay `+100` and a repayment `−10`: actual goes 10 → 110 → 100, projected 100 → 110 → 100.
+
+---
+
+## 5. Upcoming
+
+For every non-deleted budget with a schedule and `amount ≠ 0`:
+
+1. **Occurrences** inside the current period:
+   - `once`: the anchor date.
+   - `weekly`: every date on or after the anchor with the anchor's weekday.
+   - `biweekly`: every date on or after the anchor at a multiple of 14 days from it.
+   - `monthly`: the anchor's day of month, clamped to the month's last day, in every month from the anchor's month on.
+2. **Done** when `actual` has reached `amount` in its direction: `actual ≥ amount` for positive amounts, `actual ≤ amount` for negative ones. Done budgets are not listed.
+3. **Due date**: the first occurrence on or after today. If none remains, the last occurrence before today, marked `overdue`. Budgets with no occurrence in the period are not listed.
+4. `soon` = `overdue` or due date − today ≤ 3 days.
+
+Items are sorted by due date, then name.
+
+---
+
+## 6. Budgets (concepts)
+
+- **Create**: name only. `amount 0`, no schedule, not a goal. Names are unique among non-deleted budgets, case-insensitive. The name of a deleted budget may be reused.
+- **Rename**: allowed at any time. Transactions reference the budget by id, so the new name shows everywhere, past months included.
+- **Amount**: absolute, signed. Persists until changed again.
+- **Goal**: a flag. It moves the budget between the Budget and Goals screens and excludes it from § 4.3. Every other rule is identical.
+- **Delete**: soft. The budget disappears from every list, picker, total and Upcoming. Its transactions follow § 4.1. Patching or deleting a deleted budget returns `410 GONE`.
+
+---
+
+## 7. Transactions
+
+- **Create**: `amount ≠ 0`, signed as sent. `date` defaults to today and must be inside the current period. `memberId` defaults to the caller and must be active. `budgetId` must be non-deleted, otherwise `410 GONE`.
+- **Update**: same rules for changed fields. Archived transactions return `409 READ_ONLY_HISTORY`. Transactions of a deleted budget return `409 CATEGORY_DELETED`. Moving a transaction to a deleted budget returns `410 GONE`.
+- **Delete**: soft. Same read-only rules.
+- **Bulk delete**: up to 500 distinct ids, one transaction, one activity entry (`tx.bulkDelete`). If any found id is read-only, nothing is deleted.
+- Deleted transactions are never returned.
+
+---
+
+## 8. Members, authentication, sessions
+
+### 8.1 Roles
+
+- `admin` members manage member accounts. That is the only difference from `member`.
+- There is always at least one active admin. Removing or demoting the last one returns `409 LAST_ADMIN`.
+- An admin cannot remove themselves (`409 SELF_REMOVAL`).
+
+### 8.2 Removal
+
+- Sets `is_removed`. Deletes all of the member's sessions.
+- The member cannot sign in. Their username stays reserved.
+- Their transactions stay and keep counting.
+
+### 8.3 Passwords
+
+- Hashed with Argon2id (`argon2-cffi` defaults). Never returned, never logged.
+- Policy: 8–128 characters. A new password may equal the current one.
+- An admin may set any member's password through `PATCH /members/{id}`. That deletes all of the member's sessions.
+- Changing one's own password keeps the current session and deletes the others.
+
+### 8.4 Forced password change
+
+A stored flag, `users.must_change_password`.
+
+| Event | Flag |
+|---|---|
+| Seeded admin | set |
+| Member created by an admin (`POST /members`) | set |
+| Admin sets a member's password (`PATCH /members/{id}` with `password`) | set |
+| Member changes their own password (`POST /auth/password`) | cleared |
+
+While the flag is set, the member's sessions may only call `POST /auth/password` and `POST /auth/logout`. Everything else returns `403 PASSWORD_CHANGE_REQUIRED`. The member may submit the password they were given; submitting it still clears the flag.
+
+### 8.5 Sessions
+
+- Login creates a random token (`secrets.token_urlsafe(32)`). The cookie carries the token. The database stores only its SHA-256 hash.
+- Logout deletes the session row and clears the cookie.
+- Requests with an unknown token, or a token of a removed member, get `401 UNAUTHORIZED`.
+- No expiry beyond logout, password changes and removal.
+
+---
+
+## 9. Activity
+
+- Every successful household mutation writes one entry, except the merge case below. Login, logout, password changes and `PATCH /me` write none.
+- `params` snapshot names and values at write time (API_SURFACE.md § 1.8).
+- `PATCH /household` writes one entry per changed field.
+- **Merge**: if the newest entry has the same actor, the same action and the same target, it is updated in place (new params, new `at`) instead of adding a row. This applies to every action.
+- The target's navigational state (`archived`, `goal`, existence) is resolved when entries are read.
+
+---
+
+## 10. Revision
+
+- `household.rev` starts at 1.
+- Every successful household mutation, including `PATCH /me`, increments it by one in the same database transaction. Login, logout and password changes do not.
+- Every successful response carries `X-Ledger-Rev` with the current value.
+
+---
+
+## 11. Seeding
+
+The initial migration creates:
+
+| Record | Values |
+|---|---|
+| Household | name "Hogar", currency `$`, timezone from `DEFAULT_TIMEZONE` (default `UTC`), opening balance 0, member income off, rev 1 |
+| Admin | username `DEFAULT_ADMIN_USERNAME` (default `admin`), real name "Administrador", password `DEFAULT_ADMIN_PASSWORD` (default `admin`), admin, language null, theme `system` |
+
+No budgets, no transactions. Both seeded names are user data and editable afterwards.
+
+Members created through `POST /members` start with language null and theme `system`.
+
+Member colors cycle through `#d9c7a8 #a9c7b6 #c9bfe0 #f0c9b8 #bcd3e6 #e6d9a3 #c5dcc0` in creation order.
+
+---
+
+## 12. Concurrency
+
+- Last write wins. No version checks.
+- A `PATCH` or `DELETE` on a soft-deleted target returns `410 GONE`, "Record not available anymore."
+- Bulk operations and every write with an activity entry and a `rev` bump run in one database transaction.
