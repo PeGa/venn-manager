@@ -9,8 +9,11 @@ import "./styles/index.css";
 
 import { render } from "solid-js/web";
 
+import { createHttpApi } from "@/adapters/http";
+import { App } from "@/ui/App";
+
 const root = document.getElementById("root");
 if (root === null) {
   throw new Error("index.html must contain #root");
 }
-render(() => <p class="p-8 font-sans">Venn Manager</p>, root);
+render(() => <App makeApi={(hooks) => createHttpApi(hooks)} />, root);

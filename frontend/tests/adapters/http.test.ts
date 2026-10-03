@@ -80,6 +80,16 @@ describe("http adapter", () => {
     expect(error).toMatchObject({ status: 0, code: "NETWORK" });
   });
 
+  it("reports whether the backend was reachable", async () => {
+    const onReachable = vi.fn();
+    const down = vi.fn(() => Promise.reject(new TypeError("offline")));
+    await createHttpApi({ fetcher: down, onReachable }).overview().catch(() => undefined);
+    expect(onReachable).toHaveBeenLastCalledWith(false);
+    const { fetcher } = fakeFetch(200, {});
+    await createHttpApi({ fetcher, onReachable }).overview();
+    expect(onReachable).toHaveBeenLastCalledWith(true);
+  });
+
   it("reports every revision it sees", async () => {
     const { fetcher } = fakeFetch(200, {}, { "X-Ledger-Rev": "41" });
     const onRevision = vi.fn();

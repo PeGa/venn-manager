@@ -17,6 +17,8 @@ export interface HttpApiOptions {
   fetcher?: Fetcher;
   /** Called with every `X-Ledger-Rev` seen, for the sync chip. */
   onRevision?: (revision: number) => void;
+  /** Called after every call: `false` when the network failed. */
+  onReachable?: (reachable: boolean) => void;
 }
 
 function query(params: PageQuery | HistoryQuery = {}): string {
@@ -45,7 +47,11 @@ async function errorFrom(response: Response): Promise<ApiError> {
 }
 
 /** Build the HTTP adapter. */
-export function createHttpApi({ fetcher = fetch.bind(globalThis), onRevision }: HttpApiOptions = {}): Api {
+export function createHttpApi({
+  fetcher = fetch.bind(globalThis),
+  onRevision,
+  onReachable,
+}: HttpApiOptions = {}): Api {
   async function call<T>(method: Method, path: string, body?: unknown): Promise<T> {
     const init: RequestInit = { method, credentials: "same-origin" };
     if (method === "POST" || method === "PATCH") {
@@ -58,8 +64,10 @@ export function createHttpApi({ fetcher = fetch.bind(globalThis), onRevision }: 
     try {
       response = await fetcher(`${BASE}${path}`, init);
     } catch {
+      onReachable?.(false);
       throw new ApiError(0, "NETWORK", "Network unavailable");
     }
+    onReachable?.(true);
     if (!response.ok) {
       throw await errorFrom(response);
     }
