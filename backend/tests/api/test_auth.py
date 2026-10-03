@@ -1,10 +1,9 @@
-"""Auth endpoints and the forced password change (API_SURFACE.md § 2, BACKEND.md § 8)."""
+"""Auth endpoints and the forced password change (API_SURFACE.md § 2)."""
 
 from __future__ import annotations
 
 from fastapi.testclient import TestClient
-from sqlalchemy import Engine
-from sqlalchemy import func, select
+from sqlalchemy import Engine, func, select
 from sqlalchemy.orm import Session
 
 from app.config import Settings
@@ -109,9 +108,7 @@ def test_change_password_with_correct_current_lifts_gate(client: TestClient) -> 
 
 
 def test_change_password_to_the_same_value_lifts_gate(client: TestClient) -> None:
-    client.post(
-        "/api/v1/auth/login", json={"username": "admin", "password": "admin"}
-    )
+    client.post("/api/v1/auth/login", json={"username": "admin", "password": "admin"})
     client.post(
         "/api/v1/auth/password",
         json={"currentPassword": "admin", "newPassword": "admin-pass"},

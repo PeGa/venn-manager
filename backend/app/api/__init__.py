@@ -2,4 +2,6 @@
 
 from fastapi import APIRouter
 
-routers: list[APIRouter] = []
+from app.api import auth
+
+routers: list[APIRouter] = [auth.router]
