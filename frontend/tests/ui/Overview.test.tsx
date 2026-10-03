@@ -66,3 +66,11 @@ describe("Overview", () => {
     expect(within(card).queryByRole("button")).toBeNull();
   });
 });
+
+describe("forecast formula", () => {
+  it("never wraps between an operator and its number", async () => {
+    const { formula } = await import("@/ui/screens/Overview");
+    const text = formula({ startCash: 0, planned: -320948, transactionsNet: 214948, transactionCount: 3, total: -106000 }, "$");
+    expect(text).toBe("$0.00 −\u00a0$3,209.48 +\u00a0$2,149.48 =\u00a0−$1,060.00");
+  });
+});

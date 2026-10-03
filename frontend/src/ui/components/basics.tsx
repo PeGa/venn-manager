@@ -69,7 +69,7 @@ export function Bar(props: { pct: number; alert?: boolean; onDark?: boolean; lab
 type ButtonKind = "primary" | "secondary" | "danger" | "quiet";
 
 const BUTTON: Record<ButtonKind, string> = {
-  primary: "border-primary bg-primary text-white",
+  primary: "border-primary bg-primary text-white dark:border-accent dark:bg-accent dark:text-canvas",
   secondary: "border-input-border bg-card text-ink",
   danger: "border-[#e0c3b9] bg-card text-coral-text dark:border-coral-tint",
   quiet: "border-transparent bg-transparent text-accent",

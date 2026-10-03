@@ -99,15 +99,18 @@
   --shadow-menu: 0 14px 40px rgb(0 0 0 / 0.18);
 }
 
-body {
-  margin: 0;
-  background: var(--ground);
-  color: var(--ink);
-  font-family: var(--font-sans);
-}
+/* In the base layer, so Tailwind utilities such as text-xs still win. */
+@layer base {
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--font-sans);
+  }
 
-button,
-input,
-select {
-  font: inherit;
+  button,
+  input,
+  select {
+    font: inherit;
+  }
 }

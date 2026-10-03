@@ -162,3 +162,11 @@ describe("Settings · budget concepts", () => {
     await waitFor(() => expect(api.deleteBudget).toHaveBeenCalledWith("b-trip"));
   });
 });
+
+describe("zoneOptions", () => {
+  it("keeps a current zone the browser does not list", async () => {
+    const { zoneOptions } = await import("@/ui/screens/settings/HouseholdCard");
+    expect(zoneOptions("UTC", ["Europe/Madrid"])).toEqual(["UTC", "Europe/Madrid"]);
+    expect(zoneOptions("Europe/Madrid", ["Europe/Madrid"])).toEqual(["Europe/Madrid"]);
+  });
+});

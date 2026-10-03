@@ -10,6 +10,14 @@ import { useServices } from "@/ui/services";
 
 const ZONES = Intl.supportedValuesOf("timeZone");
 
+/**
+ * The time zones to offer. Browsers list canonical zones only, so aliases the
+ * server accepts (such as `UTC`) are kept by adding the current one first.
+ */
+export function zoneOptions(current: string, zones: readonly string[] = ZONES): readonly string[] {
+  return zones.includes(current) ? zones : [current, ...zones];
+}
+
 export function HouseholdCard(props: { household: Household; save: (changes: HouseholdChanges) => void }) {
   const { t } = useServices();
   const [name, setName] = createSignal<string | null>(null);
@@ -55,7 +63,7 @@ export function HouseholdCard(props: { household: Household; save: (changes: Hou
             onChange={(event) => props.save({ timezone: event.currentTarget.value })}
             class="rounded-control border border-input-border bg-input-bg px-3 py-2.5 text-sm font-normal text-ink"
           >
-            <For each={ZONES}>{(zone) => <option value={zone}>{zone}</option>}</For>
+            <For each={zoneOptions(props.household.timezone)}>{(zone) => <option value={zone}>{zone}</option>}</For>
           </select>
         </label>
         <Field

@@ -35,10 +35,14 @@ function Hero(props: { data: OverviewData }) {
   );
 }
 
-function formula(forecast: Forecast, sign: string): string {
+// Non-breaking spaces keep each operator with its number when the chip wraps.
+const NBSP = "\u00a0";
+
+export function formula(forecast: Forecast, sign: string): string {
   const money = (cents: number) => formatMoney(Math.abs(cents), sign);
-  const term = (cents: number) => `${cents < 0 ? "−" : "+"} ${money(cents)}`;
-  return `${formatMoney(forecast.startCash, sign)} ${term(forecast.planned)} ${term(forecast.transactionsNet)} = ${formatMoney(forecast.total, sign)}`;
+  const term = (cents: number) => `${cents < 0 ? "−" : "+"}${NBSP}${money(cents)}`;
+  const total = `=${NBSP}${formatMoney(forecast.total, sign)}`;
+  return [formatMoney(forecast.startCash, sign), term(forecast.planned), term(forecast.transactionsNet), total].join(" ");
 }
 
 function ForecastCard(props: { forecast: Forecast; sign: string }) {
