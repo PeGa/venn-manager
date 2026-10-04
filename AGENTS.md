@@ -318,6 +318,7 @@ Examples:
 | `DEFAULT_ADMIN_USERNAME` | no | `admin` | Seeded admin username |
 | `DEFAULT_ADMIN_PASSWORD` | no | `admin` | Seeded admin password. The admin must set a password at first sign-in |
 | `DEFAULT_TIMEZONE` | no | `UTC` | Seeded household time zone |
+| `FRONTEND_DIST` | no | — | Directory of the built frontend; when set, the API also serves it |
 
 There is no signing secret: session tokens are random and stored server-side.
 

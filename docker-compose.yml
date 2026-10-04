@@ -1,23 +1,18 @@
-# Venn Manager: frontend and backend. Open http://<host>:${VENN_FRONTEND_PORT:-5173}.
+# Venn Manager in one container. Open http://<host>:${VENN_PORT:-80}.
 #
 # Settings (shell environment or a .env file next to this one):
-#   VENN_DATA_DIR          host directory holding the SQLite database   (/var/lib/venn-manager)
-#   VENN_HOSTNAME          name the browser uses to reach this host     (temple)
-#   VENN_FRONTEND_PORT     host port for the app                        (5173)
-#   VENN_BACKEND_PORT      host port for the API, for direct calls      (8000)
-#   VENN_TIMEZONE          household time zone on first start           (UTC)
-#   VENN_ADMIN_USERNAME    first admin, created on first start          (admin)
-#   VENN_ADMIN_PASSWORD    first admin's password, changed at sign-in   (admin)
+#   VENN_PORT              host port                                     (80)
+#   VENN_DATA_DIR          host directory holding the SQLite database    (/var/lib/venn-manager)
+#   VENN_TIMEZONE          household time zone on first start            (UTC)
+#   VENN_ADMIN_USERNAME    first admin, created on first start           (admin)
+#   VENN_ADMIN_PASSWORD    first admin's password, changed at sign-in    (admin)
 #   VENN_APP_ENV           `production` adds the Secure cookie flag; needs HTTPS (development)
 
 services:
-  backend:
-    build:
-      context: .
-      target: backend
+  venn-manager:
+    build: .
     restart: unless-stopped
     environment:
-      DATABASE_URL: sqlite:////data/venn_manager.db
       APP_ENV: ${VENN_APP_ENV:-development}
       DEFAULT_TIMEZONE: ${VENN_TIMEZONE:-UTC}
       DEFAULT_ADMIN_USERNAME: ${VENN_ADMIN_USERNAME:-admin}
@@ -26,17 +21,4 @@ services:
       # A directory, not a single file: SQLite writes journal files next to the database.
       - ${VENN_DATA_DIR:-/var/lib/venn-manager}:/data
     ports:
-      - "0.0.0.0:${VENN_BACKEND_PORT:-8000}:8000"
-
-  frontend:
-    build:
-      context: .
-      target: frontend
-    restart: unless-stopped
-    depends_on:
-      - backend
-    environment:
-      VENN_API_URL: http://backend:8000
-      __VITE_ADDITIONAL_SERVER_ALLOWED_HOSTS: ${VENN_HOSTNAME:-temple}
-    ports:
-      - "0.0.0.0:${VENN_FRONTEND_PORT:-5173}:5173"
+      - "0.0.0.0:${VENN_PORT:-80}:80"

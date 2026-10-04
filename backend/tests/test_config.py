@@ -55,3 +55,10 @@ def test_load_dotenv_with_missing_file_does_nothing(tmp_path: Path) -> None:
     environ: dict[str, str] = {}
     load_dotenv(tmp_path / "absent.env", environ)
     assert environ == {}
+
+
+def test_settings_from_env_reads_the_frontend_build() -> None:
+    assert (
+        settings_from_env({"FRONTEND_DIST": "/app/dist"}).frontend_dist == "/app/dist"
+    )
+    assert settings_from_env({"FRONTEND_DIST": ""}).frontend_dist is None

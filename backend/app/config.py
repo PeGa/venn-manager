@@ -20,6 +20,7 @@ class Settings:
     default_admin_username: str = "admin"
     default_admin_password: str = "admin"  # noqa: S105  (documented default)
     default_timezone: str = "UTC"
+    frontend_dist: str | None = None
 
     @property
     def secure_cookies(self) -> bool:
@@ -64,4 +65,5 @@ def settings_from_env(environ: Mapping[str, str] = os.environ) -> Settings:
             "DEFAULT_ADMIN_PASSWORD", defaults.default_admin_password
         ),
         default_timezone=timezone,
+        frontend_dist=environ.get("FRONTEND_DIST") or None,
     )

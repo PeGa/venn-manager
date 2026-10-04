@@ -39,6 +39,17 @@ npm run dev
 
 Open http://localhost:5173 and sign in as `admin` / `admin`. The first sign-in asks for a new password. The frontend proxies `/api` to the backend on port 8000.
 
+## Docker
+
+One container serves the API and the built frontend on port 80. The database lives in a host directory.
+
+```bash
+sudo mkdir -p /var/lib/venn-manager
+docker compose up -d --build
+```
+
+Settings are listed at the top of `docker-compose.yml`.
+
 ## Environment variables
 
 | Variable | Required | Default | Purpose |
@@ -48,6 +59,7 @@ Open http://localhost:5173 and sign in as `admin` / `admin`. The first sign-in a
 | `DEFAULT_ADMIN_USERNAME` | no | `admin` | Seeded admin username |
 | `DEFAULT_ADMIN_PASSWORD` | no | `admin` | Seeded admin password |
 | `DEFAULT_TIMEZONE` | no | `UTC` | Seeded household time zone |
+| `FRONTEND_DIST` | no | — | Built frontend to serve from the API (used by the Docker image) |
 
 Read from the environment or from `backend/.env`, which is gitignored.
 

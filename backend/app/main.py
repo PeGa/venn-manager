@@ -16,6 +16,7 @@ from sqlalchemy.orm import sessionmaker
 from app.adapters.clock import SystemClock
 from app.adapters.http import routers
 from app.adapters.http.errors import error_response, install_error_handlers
+from app.adapters.http.frontend import mount_frontend
 from app.adapters.persistence.repositories import SqlUnitOfWork, make_engine
 from app.adapters.security import Argon2Hasher, SecretTokens
 from app.config import Settings, load_dotenv, settings_from_env
@@ -52,6 +53,8 @@ def create_app(
     app.middleware("http")(_require_json)
     for router in routers:
         app.include_router(router, prefix="/api/v1")
+    if settings.frontend_dist is not None:
+        mount_frontend(app, Path(settings.frontend_dist))
     return app
 
 
