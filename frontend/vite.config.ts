@@ -2,6 +2,12 @@ import tailwindcss from "@tailwindcss/vite";
 import solid from "vite-plugin-solid";
 import { defineConfig } from "vitest/config";
 
+// Only the one variable this config reads; avoids pulling in @types/node.
+declare const process: { env: Record<string, string | undefined> };
+
+/** Where /api goes. Defaults to a local backend; compose points it at the backend service. */
+const API_URL = process.env["VENN_API_URL"] ?? "http://127.0.0.1:8000";
+
 export default defineConfig({
   plugins: [solid(), tailwindcss()],
   resolve: {
@@ -9,7 +15,7 @@ export default defineConfig({
   },
   server: {
     // Same origin for the browser, so the session cookie stays SameSite=Lax.
-    proxy: { "/api": "http://127.0.0.1:8000" },
+    proxy: { "/api": API_URL },
   },
   test: {
     environment: "jsdom",
