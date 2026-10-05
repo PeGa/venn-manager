@@ -10,13 +10,13 @@ from collections.abc import Awaitable, Callable
 from pathlib import Path
 
 from fastapi import FastAPI, Request, Response
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import Engine
 from sqlalchemy.orm import sessionmaker
 
 from app.adapters.clock import SystemClock
 from app.adapters.http import routers
 from app.adapters.http.errors import error_response, install_error_handlers
-from app.adapters.http.frontend import mount_frontend
 from app.adapters.persistence.repositories import SqlUnitOfWork, make_engine
 from app.adapters.security import Argon2Hasher, SecretTokens
 from app.config import Settings, load_dotenv, settings_from_env
@@ -51,10 +51,19 @@ def create_app(
     install_error_handlers(app)
     app.middleware("http")(_add_revision_header)
     app.middleware("http")(_require_json)
+    if settings.cors_origins:
+        # The frontend on another port of the same host. Same site, so the
+        # SameSite=Lax cookie still travels; CORS only names who may read replies.
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=list(settings.cors_origins),
+            allow_credentials=True,
+            allow_methods=["GET", "POST", "PATCH", "DELETE"],
+            allow_headers=["Content-Type"],
+            expose_headers=[REVISION_HEADER],
+        )
     for router in routers:
         app.include_router(router, prefix="/api/v1")
-    if settings.frontend_dist is not None:
-        mount_frontend(app, Path(settings.frontend_dist))
     return app
 
 

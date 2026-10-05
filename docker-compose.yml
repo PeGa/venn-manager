@@ -1,7 +1,11 @@
-# Venn Manager in one container. Open http://<host>:${VENN_PORT:-80}.
+# Venn Manager: one container running the frontend (port 80) and the backend (port 8000).
+# Open http://<host>:${VENN_FRONTEND_PORT:-80}.
 #
 # Settings (shell environment or a .env file next to this one):
-#   VENN_PORT              host port                                     (80)
+#   VENN_FRONTEND_PORT     host port for the frontend                    (80)
+#   VENN_BACKEND_PORT      host port for the backend API                 (8000)
+#   VENN_ALLOWED_HOSTS     host names the browser uses, comma-separated  (venn-manager.kosumo)
+#   VENN_FRONTEND_ORIGIN   the frontend's address as the browser sees it (http://venn-manager.kosumo)
 #   VENN_DATA_DIR          host directory holding the SQLite database    (/var/lib/venn-manager)
 #   VENN_TIMEZONE          household time zone on first start            (UTC)
 #   VENN_ADMIN_USERNAME    first admin, created on first start           (admin)
@@ -10,9 +14,14 @@
 
 services:
   venn-manager:
-    build: .
+    build:
+      context: .
+      args:
+        VITE_API_PORT: ${VENN_BACKEND_PORT:-8000}
     restart: unless-stopped
     environment:
+      VENN_ALLOWED_HOSTS: ${VENN_ALLOWED_HOSTS:-venn-manager.kosumo}
+      CORS_ORIGINS: ${VENN_FRONTEND_ORIGIN:-http://venn-manager.kosumo}
       APP_ENV: ${VENN_APP_ENV:-development}
       DEFAULT_TIMEZONE: ${VENN_TIMEZONE:-UTC}
       DEFAULT_ADMIN_USERNAME: ${VENN_ADMIN_USERNAME:-admin}
@@ -21,4 +30,5 @@ services:
       # A directory, not a single file: SQLite writes journal files next to the database.
       - ${VENN_DATA_DIR:-/var/lib/venn-manager}:/data
     ports:
-      - "0.0.0.0:${VENN_PORT:-80}:80"
+      - "0.0.0.0:${VENN_FRONTEND_PORT:-80}:80"
+      - "0.0.0.0:${VENN_BACKEND_PORT:-8000}:8000"

@@ -41,7 +41,7 @@ Open http://localhost:5173 and sign in as `admin` / `admin`. The first sign-in a
 
 ## Docker
 
-One container serves the API and the built frontend on port 80. The database lives in a host directory.
+One container runs both services: the frontend on port 80 and the backend on port 8000. The database lives in a host directory.
 
 ```bash
 sudo mkdir -p /var/lib/venn-manager
@@ -59,7 +59,7 @@ Settings are listed at the top of `docker-compose.yml`.
 | `DEFAULT_ADMIN_USERNAME` | no | `admin` | Seeded admin username |
 | `DEFAULT_ADMIN_PASSWORD` | no | `admin` | Seeded admin password |
 | `DEFAULT_TIMEZONE` | no | `UTC` | Seeded household time zone |
-| `FRONTEND_DIST` | no | — | Built frontend to serve from the API (used by the Docker image) |
+| `CORS_ORIGINS` | no | — | Origins allowed to call the API from another port (Docker) |
 
 Read from the environment or from `backend/.env`, which is gitignored.
 

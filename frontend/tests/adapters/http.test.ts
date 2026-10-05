@@ -25,7 +25,7 @@ describe("http adapter", () => {
     await api.createBudget("Groceries");
     expect(calls[0]?.url).toBe("/api/v1/budgets");
     expect(calls[0]?.init.method).toBe("POST");
-    expect(calls[0]?.init.credentials).toBe("same-origin");
+    expect(calls[0]?.init.credentials).toBe("include");
     expect(new Headers(calls[0]?.init.headers).get("Content-Type")).toBe("application/json");
     expect(calls[0]?.init.body).toBe(JSON.stringify({ name: "Groceries" }));
   });
@@ -140,5 +140,27 @@ describe("http adapter", () => {
       "GET /api/v1/history/months/2026-08/breakdown?budgetId=b1",
       "GET /api/v1/history/facets",
     ]);
+  });
+});
+
+describe("apiBase", () => {
+  it("stays on the page's origin without a port", async () => {
+    const { apiBase } = await import("@/adapters/http");
+    expect(apiBase({ protocol: "http:", hostname: "temple" }, undefined)).toBe("/api/v1");
+    expect(apiBase({ protocol: "http:", hostname: "temple" }, "")).toBe("/api/v1");
+  });
+
+  it("targets the backend port on the page's host", async () => {
+    const { apiBase } = await import("@/adapters/http");
+    expect(apiBase({ protocol: "http:", hostname: "venn-manager.kosumo" }, "8000")).toBe(
+      "http://venn-manager.kosumo:8000/api/v1",
+    );
+  });
+
+  it("sends the session cookie across ports", async () => {
+    const { fetcher, calls } = fakeFetch(200, {});
+    await createHttpApi({ fetcher, baseUrl: "http://temple:8000/api/v1" }).household();
+    expect(calls[0]?.url).toBe("http://temple:8000/api/v1/household");
+    expect(calls[0]?.init.credentials).toBe("include");
   });
 });
