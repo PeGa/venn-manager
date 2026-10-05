@@ -10,7 +10,6 @@ from collections.abc import Awaitable, Callable
 from pathlib import Path
 
 from fastapi import FastAPI, Request, Response
-from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import Engine
 from sqlalchemy.orm import sessionmaker
 
@@ -51,17 +50,6 @@ def create_app(
     install_error_handlers(app)
     app.middleware("http")(_add_revision_header)
     app.middleware("http")(_require_json)
-    if settings.cors_origins:
-        # The frontend on another port of the same host. Same site, so the
-        # SameSite=Lax cookie still travels; CORS only names who may read replies.
-        app.add_middleware(
-            CORSMiddleware,
-            allow_origins=list(settings.cors_origins),
-            allow_credentials=True,
-            allow_methods=["GET", "POST", "PATCH", "DELETE"],
-            allow_headers=["Content-Type"],
-            expose_headers=[REVISION_HEADER],
-        )
     for router in routers:
         app.include_router(router, prefix="/api/v1")
     return app

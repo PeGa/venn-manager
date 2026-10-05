@@ -1,34 +1,18 @@
-# Venn Manager: one container running the frontend (port 80) and the backend (port 8000).
-# Open http://<host>:${VENN_FRONTEND_PORT:-80}.
-#
-# Settings (shell environment or a .env file next to this one):
-#   VENN_FRONTEND_PORT     host port for the frontend                    (80)
-#   VENN_BACKEND_PORT      host port for the backend API                 (8000)
-#   VENN_ALLOWED_HOSTS     host names the browser uses, comma-separated  (venn-manager.kosumo)
-#   VENN_FRONTEND_ORIGIN   the frontend's address as the browser sees it (http://venn-manager.kosumo)
-#   VENN_DATA_DIR          host directory holding the SQLite database    (/var/lib/venn-manager)
-#   VENN_TIMEZONE          household time zone on first start            (UTC)
-#   VENN_ADMIN_USERNAME    first admin, created on first start           (admin)
-#   VENN_ADMIN_PASSWORD    first admin's password, changed at sign-in    (admin)
-#   VENN_APP_ENV           `production` adds the Secure cookie flag; needs HTTPS (development)
-
+# Run with: docker compose up -d --build
+# Settings come from the environment or a .env file next to this one.
 services:
   venn-manager:
-    build:
-      context: .
-      args:
-        VITE_API_PORT: ${VENN_BACKEND_PORT:-8000}
+    build: .
+    container_name: venn-manager
     restart: unless-stopped
-    environment:
-      VENN_ALLOWED_HOSTS: ${VENN_ALLOWED_HOSTS:-venn-manager.kosumo}
-      CORS_ORIGINS: ${VENN_FRONTEND_ORIGIN:-http://venn-manager.kosumo}
-      APP_ENV: ${VENN_APP_ENV:-development}
-      DEFAULT_TIMEZONE: ${VENN_TIMEZONE:-UTC}
-      DEFAULT_ADMIN_USERNAME: ${VENN_ADMIN_USERNAME:-admin}
-      DEFAULT_ADMIN_PASSWORD: ${VENN_ADMIN_PASSWORD:-admin}
-    volumes:
-      # A directory, not a single file: SQLite writes journal files next to the database.
-      - ${VENN_DATA_DIR:-/var/lib/venn-manager}:/data
     ports:
-      - "0.0.0.0:${VENN_FRONTEND_PORT:-80}:80"
-      - "0.0.0.0:${VENN_BACKEND_PORT:-8000}:8000"
+      - "0.0.0.0:${VENN_PORT:-8080}:80"
+    volumes:
+      # Host directory holding the SQLite database (venn_manager.db).
+      - "${VENN_DATA_DIR:-/var/lib/venn-manager}:/data"
+    environment:
+      # `production` adds the Secure cookie flag: only use it behind HTTPS.
+      APP_ENV: "${APP_ENV:-development}"
+      DEFAULT_ADMIN_USERNAME: "${DEFAULT_ADMIN_USERNAME:-admin}"
+      DEFAULT_ADMIN_PASSWORD: "${DEFAULT_ADMIN_PASSWORD:-admin}"
+      DEFAULT_TIMEZONE: "${DEFAULT_TIMEZONE:-UTC}"

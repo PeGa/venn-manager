@@ -12,3 +12,4 @@ docs
 **/.coverage
 **/*.db
 **/.env
+**/*.sqlite3

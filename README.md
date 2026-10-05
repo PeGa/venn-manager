@@ -41,14 +41,23 @@ Open http://localhost:5173 and sign in as `admin` / `admin`. The first sign-in a
 
 ## Docker
 
-One container runs both services: the frontend on port 80 and the backend on port 8000. The database lives in a host directory.
+One container: nginx serves the compiled frontend on `0.0.0.0:80` and forwards `/api` to the backend on `127.0.0.1:8000` inside the container. Migrations run on start. The SQLite database lives in a host directory.
 
 ```bash
 sudo mkdir -p /var/lib/venn-manager
 docker compose up -d --build
 ```
 
-Settings are listed at the top of `docker-compose.yml`.
+Open `http://<host>:8080`.
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `VENN_PORT` | `8080` | Host port, bound on `0.0.0.0` |
+| `VENN_DATA_DIR` | `/var/lib/venn-manager` | Host directory mounted at `/data`; holds `venn_manager.db` |
+| `APP_ENV` | `development` | `production` adds the `Secure` cookie flag; use it only behind HTTPS |
+| `DEFAULT_ADMIN_USERNAME`, `DEFAULT_ADMIN_PASSWORD`, `DEFAULT_TIMEZONE` | `admin`, `admin`, `UTC` | First-run seed |
+
+Set them in the environment or in a `.env` file next to `docker-compose.yml`. The data directory is mounted, not the file, because SQLite writes journal files beside the database.
 
 ## Environment variables
 
@@ -59,7 +68,6 @@ Settings are listed at the top of `docker-compose.yml`.
 | `DEFAULT_ADMIN_USERNAME` | no | `admin` | Seeded admin username |
 | `DEFAULT_ADMIN_PASSWORD` | no | `admin` | Seeded admin password |
 | `DEFAULT_TIMEZONE` | no | `UTC` | Seeded household time zone |
-| `CORS_ORIGINS` | no | — | Origins allowed to call the API from another port (Docker) |
 
 Read from the environment or from `backend/.env`, which is gitignored.
 

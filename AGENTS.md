@@ -106,7 +106,7 @@ This is a finance application. Security is a first-class requirement.
 
 ### Request handling
 
-- Mutating requests must be `application/json`. With `SameSite=Lax`, that is the CSRF defense. CORS is allowed only for the origins listed in `CORS_ORIGINS` (the frontend on another port); never use a wildcard.
+- Mutating requests must be `application/json`. With `SameSite=Lax` and no CORS, that is the CSRF defense. Do not add CORS.
 - Validate every input with Pydantic models: types, lengths, ranges, enums. Reject unknown fields.
 - Trim strings before validating.
 - Money is integer cents. Never accept or produce floats for money.
@@ -318,7 +318,6 @@ Examples:
 | `DEFAULT_ADMIN_USERNAME` | no | `admin` | Seeded admin username |
 | `DEFAULT_ADMIN_PASSWORD` | no | `admin` | Seeded admin password. The admin must set a password at first sign-in |
 | `DEFAULT_TIMEZONE` | no | `UTC` | Seeded household time zone |
-| `CORS_ORIGINS` | no | — | Comma-separated origins allowed to call the API from another port |
 
 There is no signing secret: session tokens are random and stored server-side.
 

@@ -20,7 +20,6 @@ class Settings:
     default_admin_username: str = "admin"
     default_admin_password: str = "admin"  # noqa: S105  (documented default)
     default_timezone: str = "UTC"
-    cors_origins: tuple[str, ...] = ()
 
     @property
     def secure_cookies(self) -> bool:
@@ -65,9 +64,4 @@ def settings_from_env(environ: Mapping[str, str] = os.environ) -> Settings:
             "DEFAULT_ADMIN_PASSWORD", defaults.default_admin_password
         ),
         default_timezone=timezone,
-        cors_origins=tuple(
-            origin.strip()
-            for origin in environ.get("CORS_ORIGINS", "").split(",")
-            if origin.strip()
-        ),
     )

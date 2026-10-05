@@ -7,15 +7,7 @@
  */
 import { ApiError, type Api, type HistoryQuery, type PageQuery } from "@/ports/api";
 
-const PATH = "/api/v1";
-
-/**
- * Where the API lives. Without *port* it is the page's own origin (the dev
- * server proxies it); with one, the same host on that port.
- */
-export function apiBase(location: { protocol: string; hostname: string }, port: string | undefined): string {
-  return port ? `${location.protocol}//${location.hostname}:${port}${PATH}` : PATH;
-}
+const BASE = "/api/v1";
 const REVISION_HEADER = "X-Ledger-Rev";
 
 type Fetcher = (url: string, init?: RequestInit) => Promise<Response>;
@@ -27,8 +19,6 @@ export interface HttpApiOptions {
   onRevision?: (revision: number) => void;
   /** Called after every call: `false` when the network failed. */
   onReachable?: (reachable: boolean) => void;
-  /** API root, from `apiBase`. Defaults to the page's own origin. */
-  baseUrl?: string;
 }
 
 function query(params: PageQuery | HistoryQuery = {}): string {
@@ -61,11 +51,9 @@ export function createHttpApi({
   fetcher = fetch.bind(globalThis),
   onRevision,
   onReachable,
-  baseUrl = PATH,
 }: HttpApiOptions = {}): Api {
   async function call<T>(method: Method, path: string, body?: unknown): Promise<T> {
-    // "include": the session cookie must also travel when the API is on another port.
-    const init: RequestInit = { method, credentials: "include" };
+    const init: RequestInit = { method, credentials: "same-origin" };
     if (method === "POST" || method === "PATCH") {
       init.headers = { "Content-Type": "application/json" };
       if (body !== undefined) {
@@ -74,7 +62,7 @@ export function createHttpApi({
     }
     let response: Response;
     try {
-      response = await fetcher(`${baseUrl}${path}`, init);
+      response = await fetcher(`${BASE}${path}`, init);
     } catch {
       onReachable?.(false);
       throw new ApiError(0, "NETWORK", "Network unavailable");

@@ -9,12 +9,11 @@ import "./styles/index.css";
 
 import { render } from "solid-js/web";
 
-import { apiBase, createHttpApi } from "@/adapters/http";
+import { createHttpApi } from "@/adapters/http";
 import { App } from "@/ui/App";
 
 const root = document.getElementById("root");
 if (root === null) {
   throw new Error("index.html must contain #root");
 }
-const baseUrl = apiBase(window.location, import.meta.env.VITE_API_PORT);
-render(() => <App makeApi={(hooks) => createHttpApi({ ...hooks, baseUrl })} />, root);
+render(() => <App makeApi={(hooks) => createHttpApi(hooks)} />, root);
