@@ -67,7 +67,7 @@ export function ExplainDialog(props: {
   return (
     <Dialog open title={t("explain_title")} onClose={() => props.onClose()}>
       <h2 class="text-[17px] font-bold">{t("explain_title")}</h2>
-      <div class="max-h-[60vh] overflow-y-auto">
+      <div class="max-h-[min(60vh,calc(100dvh_-_300px))] overflow-y-auto">
         <Section label={t("forecast_start")} value={money(props.forecast.startCash)} />
         <Show
           when={budgets.data && transactions.data}
