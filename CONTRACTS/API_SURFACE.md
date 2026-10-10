@@ -425,6 +425,7 @@ Strings are trimmed before validation. Unknown fields are rejected.
 | `date` | Valid `YYYY-MM-DD`, inside the current period |
 | `ids` (bulk) | 1–500 UUIDs |
 | `page`, `size` | Integers, `page` ≥ 1, `size` 1–200 |
+| `q` (History) | 0–128 characters. Blank means no search |
 | `month` (path) | Valid `YYYY-MM` |
 
 ---

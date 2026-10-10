@@ -204,6 +204,21 @@ Narrow order: hero, Coming up, Recent activity.
   | Logged transactions ({transactionCount}) | `forecast.transactionsNet`, with sign |
 
 - The formula, both layouts: `{startCash} + {planned} + {transactionsNet} = {total}`. A negative term is written with `−` instead of `+`. Each operator stays on the same line as its number.
+- Under the formula, both layouts: a dimmed "What's this?" followed by an **Explain** button. It opens the Explain dialog.
+
+**Explain dialog** "How the forecast adds up". A dialog or sheet (§ 4.4) that lists every term of the forecast as rows, so the reader can add them up.
+
+| Section | Header value | Rows |
+|---|---|---|
+| Start-of-month cash | `forecast.startCash` | none |
+| Logged transactions ({transactionCount}) | `forecast.transactionsNet`, with sign | Every counted transaction of the period (BACKEND.md § 4.1): rows of a deleted budget are left out. Newest first. Title: category. Subtitle: member · date. Amount: signed, two decimals |
+| Planned (still to move) | `forecast.planned`, with sign | Every non-deleted budget, goals included, whose `remaining` is not 0, in creation order. Title: budget name. Amount: `remaining`, signed, two decimals |
+
+- Footer: "Forecast" and `forecast.total`, two decimals, separated from the sections by a rule.
+- Empty sections show "None this month."
+- Amounts are coral when negative and accent green when positive, like the budget stepper (§ 4.2).
+- Rows are read-only. Close with the Close button, Escape or the scrim.
+- The section values come from `/overview`, so header values and the footer always match the hero. The rows come from `GET /budgets` and every page of `GET /transactions`.
 
 **Recent activity.**
 - The latest 5 entries. Caption "last 5 actions" (wide only).
@@ -478,6 +493,7 @@ Only the actions listed here reach the backend. Navigation, selection, highlight
 | Change password | `POST /auth/password` |
 | Sign out | `POST /auth/logout` |
 | Open Overview | `GET /overview` |
+| Explain | `GET /budgets`, every page of `GET /transactions` |
 | Open Budget or Goals | `GET /budgets` |
 | Budget stepper, typed amount | `PATCH /budgets/{id}` `{ amount }` |
 | Goal tick | `PATCH /budgets/{id}` `{ goal }` |
