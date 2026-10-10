@@ -37,7 +37,7 @@ Two independent switches drive presentation. Data and requests never differ.
 | | Wide (≥ 768 px) | Narrow (< 768 px) |
 |---|---|---|
 | Navigation | Fixed left sidebar, 210 px | Title bar with a 44×44 menu button. The menu opens as a dropdown panel over the content |
-| Sidebar / title bar content | Brand "Venn Manager", household name · member count, nav items, sync and "Signed in as" card at the bottom | Screen title on the left, sync chip top right, menu button |
+| Sidebar / title bar content | Brand "Venn Manager", household name · active member count ("2 members"), nav items, sync and "Signed in as" card at the bottom | Screen title on the left, sync chip top right, menu button |
 | Screen header | Month label ("September 2026") above the screen title | Screen title only |
 | Grids | Overview 1.1fr / 1fr. Budget and Goals 2 columns. Settings 3 columns | One column |
 | Card copy | Full | Compact (noted per screen) |
@@ -66,7 +66,7 @@ Order: **Overview, Budget, Transactions, History, Goals, Balance, Settings.**
 
 ### 2.4 Sync chip
 
-- Shows `● SYNCED · rev {n}`, where `n` is the latest `X-Ledger-Rev` seen (API_SURFACE.md § 0).
+- Shows `● SYNCED · rev {n}` in the sidebar and `● rev {n}` in the narrow title bar, where `n` is the latest `X-Ledger-Rev` seen (API_SURFACE.md § 0).
 - When the latest request failed for network reasons it shows `● NOT SYNCED` in coral until a request succeeds.
 
 ---
@@ -85,6 +85,7 @@ Rules come from API_SURFACE.md § 2 and BACKEND.md § 8. Screens use the design'
 ### 3.2 Forced password change
 
 - Shown when the session reports `mustChangePassword`, or when any request returns `PASSWORD_CHANGE_REQUIRED`.
+- Title "Choose a password", then "Set a password to continue. You may keep the one you were given."
 - Fields: Current password, New password, Repeat new password. Button: Change password.
 - A Log out button is always available on this screen.
 - New password rules: 8–128 characters, both new fields equal. Keeping the assigned password is allowed. Errors show inline next to the field.
@@ -95,7 +96,7 @@ Rules come from API_SURFACE.md § 2 and BACKEND.md § 8. Screens use the design'
 
 ### 4.1 Transaction row
 
-Used on Overview links, Transactions and History.
+Used on Transactions and History.
 
 | Part | Content |
 |---|---|
@@ -120,7 +121,7 @@ Used on Budget and Goals.
 | Due chip | Schedule summary: "No due date", "Once · Sep 15", "Weekly · Mondays", "Every 2 weeks · from Sep 3", "Monthly · 1st". Opens the schedule dialog (§ 4.3) |
 | Goal tick | Checkbox labelled "Goal" |
 | Stepper | `−` button, currency sign, amount input, `+` button |
-| Progress bar | `progressPct` from the server. Bar green normally, coral when `over` |
+| Progress bar | `progressPct` from the server. Coral when the note is coral, green otherwise |
 | Note | See below |
 
 **Stepper.**
@@ -138,18 +139,19 @@ Used on Budget and Goals.
 | Negative | not over | `{actual} spent · {remaining} left` |
 | Negative | over | `{actual} spent · {overBy} over` (coral) |
 | Positive | not over | `{actual} received · {remaining} to go` |
-| Positive | over | `{actual} received · {overBy} above` |
+| Positive | over | `{actual} received · {overBy} above` (not coral: more income is good news) |
 | Zero | no transactions | `{currency}0 · Set an amount` |
 | Zero | with transactions | `{actual} spent` or `{actual} received` by the sign of `actual`, then `· Set an amount` (coral) |
 
-On goal budgets the words change: `{actual} of {amount} · {remaining} to go`, `Reached` when `remaining` is zero and not over, `{overBy} over` when over.
+On goal budgets the words change: `{actual} of {amount} · {remaining} to go`, `Reached` when `remaining` is zero and not over, `{overBy} over` (coral) when over, whatever the sign.
 
 **Goal tick.** Toggling it sends `PATCH /budgets/{id}` with `goal`. A goal budget leaves the Budget screen and appears on Goals. Unticking moves it back.
 
 ### 4.3 Schedule dialog
 
+- Title "When is {name} due?".
 - Repeat: None, Once, Weekly, Every 2 weeks, Monthly.
-- Date: a native date input. Required unless Repeat is None.
+- Date: a native date input, labelled "Due date" for Once and "First due date" for the repeating options. Required unless Repeat is None; saving without one shows "Pick a date".
   - Once: the due date.
   - Weekly: the first due date; the weekday repeats.
   - Every 2 weeks: the first due date; repeats every 14 days.
@@ -159,7 +161,7 @@ On goal budgets the words change: `{actual} of {amount} · {remaining} to go`, `
 ### 4.4 Dialogs and sheets
 
 - Modal on fine pointers, bottom sheet on coarse pointers (§ 2.2).
-- Scrim `rgba(30,29,26,.38)`. Close on Escape, on the scrim, or on Cancel.
+- Scrim `rgba(30,29,26,.38)` in the light theme, `rgba(0,0,0,.55)` in the dark one. Close on Escape, on the scrim, or on Cancel (Close where there is nothing to cancel).
 - Focus moves into the dialog on open and returns to the trigger on close.
 
 ### 4.5 Confirmations
@@ -168,11 +170,11 @@ A confirmation dialog appears before:
 
 | Action | Text |
 |---|---|
-| Removing more than one transaction | "Remove {n} transactions?" |
+| Removing more than one transaction | "Remove {n} transactions?" "They disappear from every list and total." |
 | Removing a budget concept | "Remove {name}? Its budget disappears. Its transactions stay visible, marked (deleted), and stop counting in every total, past months included." |
 | Removing a member | "Remove {name}? They can no longer sign in. Their transactions stay." |
 
-Removing a single transaction happens immediately, with no confirmation.
+Each dialog has Cancel and Remove. Removing a single transaction happens immediately, with no confirmation.
 
 ### 4.6 Category picker
 
@@ -238,13 +240,13 @@ Narrow order: hero, Coming up, Recent activity.
 ### 5.2 Budget
 
 - Budget cards (§ 4.2) for every non-goal budget, in creation order. Two columns wide, one narrow.
-- A trailing dashed card "+ Add budget concept in Settings" opens Settings and highlights the Budget concepts card.
+- A trailing dashed card "+ Add budget concept in Settings" (narrow: "+ Add concept in Settings") opens Settings and highlights the Budget concepts card.
 - With no budgets, only the dashed card shows.
 
 ### 5.3 Transactions
 
 **Add bar.**
-- Fields: Amount, category picker (§ 4.6), Add button (wide label "Add", narrow label "+").
+- Fields: Amount (placeholder "Amount", narrow "0.00"), category picker (§ 4.6), Add button (wide label "Add", narrow label "+").
 - Amount is literal: `25` records +25.00, `-25` records −25.00 (§ 9.3 parsing).
 - The first budget in creation order is preselected.
 - Add is disabled until the amount parses to a non-zero value.
@@ -273,8 +275,8 @@ Read-only. Months before the current period, newest first.
 - Every filter change refetches; filtering happens on the server.
 
 **Month group.**
-- Header: month label ("August 2026"), count, "Spent {spent}", "Earned {earned}", "Details…" button.
-- Count: "{n} transactions", or "{matchCount} of {totalCount} transactions" when filters hide some.
+- Header: month label ("August 2026"), count, "Spent {spent}", "Earned {earned}" in accent green, "Details…" button.
+- Count: "{n} transactions · read-only", or "{matchCount} of {totalCount} transactions · read-only" when filters hide some.
 - Rows: transaction rows (§ 4.1), no selection.
 - Months load 12 per page. "Show earlier months" loads the next page.
 - Each month's rows load with that month, 200 per page, with "Show more" inside the group.
@@ -313,9 +315,10 @@ Household-wide. Every member can edit everything here except member accounts, wh
 - Quick chips `$ € £ ¥` set the value immediately. The chip matching the current value is filled.
 
 **Household.**
+- Subtitle "Shared by every member."
 - Name. Saved on blur or Enter.
 - Timezone: a select of IANA zones (`Intl.supportedValuesOf('timeZone')`). Saved on change.
-- Opening balance: signed amount, two decimals. Saved on blur or Enter. Hint: "What the household had before using Venn Manager."
+- Opening balance: signed amount, two decimals. Saved on blur or Enter. Hint: "What the household had before using Venn Manager." An unparseable value shows "Enter an amount like 1250.50".
 - Toggle "Show what each member brings in", hint "Adds a per-member total of logged income to Balance." Saved on change.
 
 **Members.**
@@ -323,8 +326,8 @@ Household-wide. Every member can edit everything here except member accounts, wh
 - Rows for active members: avatar, real name, "{role} · {spentThisMonth} spent". Role reads "Admin" or "Member".
 - Admins also see:
   - A Remove button on every row except their own (confirmation, § 4.5).
-  - Clicking a row opens the account dialog: Real name, Admin toggle, New password (optional), Save, Cancel.
-  - An input "Name to invite" and an Invite button. Invite opens the invite dialog with Real name prefilled, plus Username, Initial password, Admin toggle, Cancel, Invite.
+  - Clicking a row opens the account dialog "{name}'s account": Real name, Admin toggle, New password (optional), Save, Cancel.
+  - An input "Name to invite" and an Invite button. Invite opens the invite dialog "Add a member" with Real name prefilled, plus Username, Initial password, Admin toggle, Cancel, Invite. Its hint reads "They will choose their own password at first sign-in."
 - Non-admins see the rows only.
 - Server errors (`DUPLICATE_NAME`, `LAST_ADMIN`, `SELF_REMOVAL`, `VALIDATION`) show inline in the dialog.
 
@@ -340,7 +343,7 @@ Household-wide. Every member can edit everything here except member accounts, wh
 Per user. Reached from "Signed in as" (§ 2.3). Not part of the nav list.
 
 - **Account:** Real name, Username. Saved on blur or Enter. A taken username shows inline.
-- **Password:** Current password, New password, Repeat new password, Change password. Rules as § 3.2.
+- **Password:** Current password, New password, Repeat new password, Change password. Rules as § 3.2. Success shows "Password changed".
 - **Preferences:** Language chips (English, Español). Theme chips (Light, Dark, System). Saved on click.
 - **Sign out** button.
 
@@ -427,8 +430,8 @@ Section labels after the time: Transactions, History, Budget, Goals, Settings.
 
 - Each screen fetches its data every time it opens and when the window regains focus.
 - Cached data paints immediately while the refetch runs. The first load shows card skeletons.
-- After the user's own mutation, the screen applies the returned record and refetches what changed. Other members' edits appear on the next fetch. Last write wins.
-- When a response's `period.month` differs from the cached one, every cached query is dropped and the current screen refetches. That is how the client notices a month rollover.
+- After the user's own mutation, every cached query refetches. Other members' edits appear on the next fetch. Last write wins.
+- A month rollover needs no special handling: the next fetch returns the new period and its figures (BACKEND.md § 3).
 - Failed network requests retry up to 3 times. Then the card shows "Couldn't load this. Retry".
 
 ### 8.1 Errors
@@ -452,8 +455,8 @@ Amounts travel as integer cents (API_SURFACE.md § 0).
   - `sign` is `−` (U+2212) for negatives. With the "signed" option, positives get `+`.
   - `digits` use `,` for thousands and `.` for decimals, in every language.
   - Example: `−$1,629`, `+$2,240.00`, `$0.00`.
-- Two decimals: transaction amounts, forecast lines and formula, balance figures, opening balance.
-- Whole units (rounded half up): hero, budget notes and totals, Coming up, History totals and pie legend, member spend.
+- Two decimals: transaction amounts, the forecast hero, its lines and formula, the Explain dialog, balance figures, opening balance.
+- Whole units (rounded half up): budget notes and totals, Coming up, History totals and pie legend, member spend.
 - The currency sign may be empty.
 
 ### 9.2 Dates and times
@@ -542,7 +545,7 @@ Before sign-in only rule 2 applies. New members start with no preference, so the
 
 ### 11.3 Adding a language
 
-One new locale file with every key, plus the new code in the `language` enum (API_SURFACE.md § 12). Nothing else changes.
+One new locale file with every key, the new code in the client's `Language` type with its display name for Profile, and the new code in the server's `language` enum (API_SURFACE.md § 12). TypeScript fails the build until all of them agree.
 
 ### 11.4 Theme
 
