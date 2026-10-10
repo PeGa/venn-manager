@@ -17,15 +17,14 @@ from app.adapters.http.shapes import (
 from app.adapters.http.transactions import TransactionOut
 from app.application import history as use_cases
 from app.application.auth import Auth
-from app.domain.history import HistoryFilter
-from app.domain.transactions import PAYEE_MAX
+from app.domain.history import SEARCH_MAX, HistoryFilter
 from app.ports import Context
 
 router = APIRouter(prefix="/history", tags=["history"])
 
 
 def history_filter(
-    q: str | None = Query(None, max_length=PAYEE_MAX),
+    q: str | None = Query(None, max_length=SEARCH_MAX),
     member_id: UUID | None = Query(None, alias="memberId"),
     budget_id: UUID | None = Query(None, alias="budgetId"),
 ) -> HistoryFilter:

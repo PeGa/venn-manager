@@ -19,22 +19,18 @@ from app.adapters.http.shapes import (
     PageParams,
     page_params,
     provided,
-    trimmed,
 )
 from app.application import transactions as use_cases
 from app.application.auth import Auth
 from app.application.transactions import NewTransaction, TransactionChanges
-from app.domain.transactions import BULK_DELETE_MAX, PAYEE_MAX
+from app.domain.transactions import BULK_DELETE_MAX
 from app.ports import Context
 
 router = APIRouter(prefix="/transactions", tags=["transactions"])
 
-Payee = Annotated[str, trimmed(PAYEE_MAX)]
-
 
 class TransactionOut(ApiModel):
     id: UUID
-    payee: str
     budget_id: UUID
     category: str
     category_deleted: bool
@@ -47,7 +43,6 @@ class TransactionOut(ApiModel):
 
 
 class TransactionIn(InputModel):
-    payee: Payee
     budget_id: UUID
     amount: Cents
     date: IsoDate | None = None
@@ -55,7 +50,6 @@ class TransactionIn(InputModel):
 
 
 class TransactionPatchIn(InputModel):
-    payee: Payee | None = None
     budget_id: UUID | None = None
     amount: Cents | None = None
     date: IsoDate | None = None

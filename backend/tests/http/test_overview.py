@@ -11,7 +11,7 @@ from tests.helpers import add_budget, insert_transaction
 def _log(client: TestClient, budget: dict[str, object], amount: int) -> None:
     response = client.post(
         "/api/v1/transactions",
-        json={"payee": "x", "budgetId": budget["id"], "amount": amount},
+        json={"budgetId": budget["id"], "amount": amount},
     )
     assert response.status_code == 201
 
@@ -50,20 +50,11 @@ def test_overview_start_cash_carries_earlier_months(
     assert forecast["transactionCount"] == 0
 
 
-def test_overview_reports_budget_totals_and_period(admin: TestClient) -> None:
-    groceries = add_budget(admin, "Groceries", -80000)
-    goal = add_budget(admin, "Trip", -20000)
-    admin.patch(f"/api/v1/budgets/{goal['id']}", json={"goal": True})
-    _log(admin, groceries, -60000)
+def test_overview_reports_period_without_budget_totals(admin: TestClient) -> None:
     body = admin.get("/api/v1/overview").json()
     assert body["period"]["month"] == "2026-09"
     assert body["currencySign"] == "$"
-    assert body["budgetTotals"] == {
-        "limit": 80000,
-        "spent": 60000,
-        "leftToSpend": 20000,
-        "spentPct": 75.0,
-    }
+    assert "budgetTotals" not in body
 
 
 def test_overview_lists_latest_transactions_and_activity(admin: TestClient) -> None:

@@ -118,7 +118,6 @@ transactions = Table(
     "transactions",
     metadata,
     Column("id", Uuid, primary_key=True),
-    Column("payee", String(120), nullable=False),
     Column("budget_id", Uuid, ForeignKey("budgets.id"), nullable=False, index=True),
     Column("amount", BigInteger, nullable=False),
     Column("member_id", Uuid, ForeignKey("users.id"), nullable=False, index=True),

@@ -53,13 +53,6 @@ class ActivityOut(ApiModel):
         return {key: value for key, value in fields.items() if value is not None}
 
 
-class BudgetTotalsOut(ApiModel):
-    limit: int
-    spent: int
-    left_to_spend: int
-    spent_pct: float
-
-
 class ForecastOut(ApiModel):
     start_cash: int
     planned: int
@@ -71,7 +64,6 @@ class ForecastOut(ApiModel):
 class OverviewOut(ApiModel):
     period: PeriodOut
     currency_sign: str
-    budget_totals: BudgetTotalsOut
     forecast: ForecastOut
     upcoming: list[UpcomingOut]
     recent_transactions: list[TransactionOut]

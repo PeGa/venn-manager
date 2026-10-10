@@ -8,7 +8,6 @@ from app.domain.entities import Budget, Transaction
 from app.domain.errors import DomainError, validation
 from app.domain.period import Period
 
-PAYEE_MAX = 120
 BULK_DELETE_MAX = 500
 
 

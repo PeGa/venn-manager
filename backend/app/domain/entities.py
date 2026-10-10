@@ -71,7 +71,6 @@ class Budget:
 class Transaction:
     """A signed movement of money against one budget (BACKEND.md § 7)."""
 
-    payee: str
     budget_id: UUID
     amount: int
     member_id: UUID

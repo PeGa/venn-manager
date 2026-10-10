@@ -1,4 +1,4 @@
-"""Left to spend and the month-end forecast (BACKEND.md § 4.3, § 4.4)."""
+"""The month-end forecast (BACKEND.md § 4.4)."""
 
 from __future__ import annotations
 
@@ -13,17 +13,6 @@ class BudgetLine:
 
     amount: int
     actual: int
-    goal: bool = False
-
-
-@dataclass(frozen=True)
-class BudgetTotals:
-    """The "Left to spend" hero (BACKEND.md § 4.3)."""
-
-    limit: int
-    spent: int
-    left_to_spend: int
-    spent_pct: float
 
 
 @dataclass(frozen=True)
@@ -35,15 +24,6 @@ class Forecast:
     transactions_net: int
     transaction_count: int
     total: int
-
-
-def budget_totals(lines: list[BudgetLine]) -> BudgetTotals:
-    """Spending budgets only; goals are money set aside on purpose."""
-    spending = [line for line in lines if not line.goal]
-    limit = sum(-line.amount for line in spending if line.amount < 0)
-    spent = sum(max(0, -line.actual) for line in spending if line.amount <= 0)
-    pct = min(100.0, spent / limit * 100) if limit else 0.0
-    return BudgetTotals(limit, spent, limit - spent, pct)
 
 
 def forecast(

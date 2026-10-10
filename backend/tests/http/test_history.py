@@ -17,15 +17,15 @@ def ledger(admin: TestClient, db: Session) -> dict[str, dict[str, object]]:
     paycheck = add_budget(admin, "Paycheck")
     gone = add_budget(admin, "Old fun")
     rows = [
-        (groceries, -21240, date(2026, 8, 24), "Greenfield Market"),
-        (dining, -8800, date(2026, 8, 21), "Kiez Bistro"),
-        (paycheck, 224000, date(2026, 8, 29), "Paycheck Northwind"),
-        (gone, -4200, date(2026, 8, 15), "Cinema"),
-        (groceries, -30175, date(2026, 7, 22), "Greenfield Market"),
-        (groceries, -999, date(2026, 9, 2), "September is not history"),
+        (groceries, -21240, date(2026, 8, 24)),
+        (dining, -8800, date(2026, 8, 21)),
+        (paycheck, 224000, date(2026, 8, 29)),
+        (gone, -4200, date(2026, 8, 15)),
+        (groceries, -30175, date(2026, 7, 22)),
+        (groceries, -999, date(2026, 9, 2)),
     ]
-    for budget, amount, day, payee in rows:
-        insert_transaction(db, str(budget["id"]), amount, day, payee=payee)
+    for budget, amount, day in rows:
+        insert_transaction(db, str(budget["id"]), amount, day)
     insert_transaction(db, str(dining["id"]), -100, date(2026, 8, 1), deleted=True)
     admin.delete(f"/api/v1/budgets/{gone['id']}")
     return {
@@ -56,7 +56,7 @@ def test_months_list_past_months_newest_first(
 def test_months_filtered_by_search_only_keep_matches(
     admin: TestClient, ledger: dict[str, dict[str, object]]
 ) -> None:
-    body = admin.get("/api/v1/history/months?q=greenFIELD").json()
+    body = admin.get("/api/v1/history/months?q=GROCer").json()
     assert [(m["month"], m["matchCount"], m["totalCount"]) for m in body["items"]] == [
         ("2026-08", 1, 4),
         ("2026-07", 1, 1),
@@ -102,11 +102,11 @@ def test_month_transactions_include_deleted_categories(
     admin: TestClient, ledger: dict[str, dict[str, object]]
 ) -> None:
     body = admin.get("/api/v1/history/months/2026-08/transactions").json()
-    assert [t["payee"] for t in body["items"]] == [
-        "Paycheck Northwind",
-        "Greenfield Market",
-        "Kiez Bistro",
-        "Cinema",
+    assert [t["category"] for t in body["items"]] == [
+        "Paycheck",
+        "Groceries",
+        "Dining out",
+        "Old fun",
     ]
     assert body["total"] == 4
     cinema = body["items"][-1]
@@ -117,8 +117,8 @@ def test_month_transactions_include_deleted_categories(
 def test_month_transactions_filtered(
     admin: TestClient, ledger: dict[str, dict[str, object]]
 ) -> None:
-    body = admin.get("/api/v1/history/months/2026-08/transactions?q=kiez").json()
-    assert [t["payee"] for t in body["items"]] == ["Kiez Bistro"]
+    body = admin.get("/api/v1/history/months/2026-08/transactions?q=dining").json()
+    assert [t["category"] for t in body["items"]] == ["Dining out"]
 
 
 @pytest.mark.parametrize("month", ["2026-09", "2026-10", "2026-13", "nope"])
@@ -157,7 +157,7 @@ def test_breakdown_lists_counted_spending_by_category(
 def test_breakdown_respects_filters(
     admin: TestClient, ledger: dict[str, dict[str, object]]
 ) -> None:
-    body = admin.get("/api/v1/history/months/2026-08/breakdown?q=kiez").json()
+    body = admin.get("/api/v1/history/months/2026-08/breakdown?q=dining").json()
     assert (body["spent"], len(body["slices"])) == (8800, 1)
 
 
@@ -191,3 +191,10 @@ def test_history_with_bad_filters_returns_400(admin: TestClient) -> None:
 
 def test_history_without_session_returns_401(client: TestClient) -> None:
     assert client.get("/api/v1/history/months").status_code == 401
+
+
+def test_months_with_search_over_128_characters_returns_400(admin: TestClient) -> None:
+    assert admin.get(f"/api/v1/history/months?q={'a' * 128}").status_code == 200
+    response = admin.get(f"/api/v1/history/months?q={'a' * 129}")
+    assert response.status_code == 400
+    assert response.json()["field"] == "q"

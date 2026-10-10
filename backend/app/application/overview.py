@@ -1,4 +1,4 @@
-"""The Overview screen and Coming up (BACKEND.md § 4.3, § 4.4, § 5)."""
+"""The Overview screen and Coming up (BACKEND.md § 4.4, § 5)."""
 
 from __future__ import annotations
 
@@ -8,13 +8,7 @@ from app.application.activity import ActivityView, views
 from app.application.budgets import schedule_of
 from app.application.common import period
 from app.application.transactions import TransactionView, view
-from app.domain.forecast import (
-    BudgetLine,
-    BudgetTotals,
-    Forecast,
-    budget_totals,
-    forecast,
-)
+from app.domain.forecast import BudgetLine, Forecast, forecast
 from app.domain.period import Period
 from app.domain.upcoming import Scheduled, UpcomingItem, upcoming
 from app.ports import Context
@@ -29,7 +23,6 @@ class OverviewView:
 
     period: Period
     currency_sign: str
-    budget_totals: BudgetTotals
     forecast: Forecast
     upcoming: list[UpcomingItem]
     recent_transactions: list[TransactionView]
@@ -41,7 +34,7 @@ def _lines_and_upcoming(
 ) -> tuple[list[BudgetLine], list[UpcomingItem]]:
     budgets = ctx.uow.budgets.active()
     actuals = ctx.uow.transactions.actual_by_budget(current.start, current.end)
-    lines = [BudgetLine(b.amount, actuals.get(b.id, 0), b.is_goal) for b in budgets]
+    lines = [BudgetLine(b.amount, actuals.get(b.id, 0)) for b in budgets]
     scheduled = [
         Scheduled(b.id, b.name, b.amount, actuals.get(b.id, 0), schedule)
         for b in budgets
@@ -56,7 +49,7 @@ def coming_up(ctx: Context) -> list[UpcomingItem]:
 
 
 def overview(ctx: Context) -> OverviewView:
-    """Totals, forecast, Coming up, latest transactions and latest activity."""
+    """Forecast, Coming up, latest transactions and latest activity."""
     current = period(ctx)
     household = ctx.uow.household.get()
     lines, items = _lines_and_upcoming(ctx, current)
@@ -71,7 +64,6 @@ def overview(ctx: Context) -> OverviewView:
     return OverviewView(
         period=current,
         currency_sign=household.currency_sign,
-        budget_totals=budget_totals(lines),
         forecast=month_forecast,
         upcoming=items,
         recent_transactions=[view(t, b, current) for t, b in recent],

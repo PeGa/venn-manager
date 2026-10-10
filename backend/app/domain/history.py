@@ -8,12 +8,13 @@ from dataclasses import dataclass
 from datetime import date
 from uuid import UUID
 
+SEARCH_MAX = 128
 MONTH_KEY = re.compile(r"(\d{4})-(\d{2})")
 
 
 @dataclass(frozen=True)
 class HistoryFilter:
-    """Shared filters. `q` matches payee, category or member name, any case."""
+    """Shared filters. `q` matches category or member name, any case."""
 
     q: str | None = None
     member_id: UUID | None = None

@@ -83,7 +83,6 @@ def matching(filters: HistoryFilter | None) -> list[ColumnElement[bool]]:
         pattern = _like(filters.q)
         conditions.append(
             or_(
-                func.lower(transactions.c.payee).like(pattern, escape="\\"),
                 func.lower(budgets.c.name).like(pattern, escape="\\"),
                 func.lower(users.c.real_name).like(pattern, escape="\\"),
             )

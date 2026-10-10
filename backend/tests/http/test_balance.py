@@ -35,11 +35,11 @@ def test_balance_lists_member_income_when_enabled(
     insert_transaction(db, str(budget["id"]), 100000, date(2026, 8, 3))
     other.post(
         "/api/v1/transactions",
-        json={"payee": "Pay", "budgetId": budget["id"], "amount": 224000},
+        json={"budgetId": budget["id"], "amount": 224000},
     )
     admin.post(
         "/api/v1/transactions",
-        json={"payee": "Gift", "budgetId": budget["id"], "amount": 5000},
+        json={"budgetId": budget["id"], "amount": 5000},
     )
     members = admin.get("/api/v1/balance").json()["members"]
     me = admin.get("/api/v1/auth/session").json()["member"]

@@ -80,7 +80,6 @@ def insert_transaction(
     amount: int,
     day: date,
     *,
-    payee: str = "Payee",
     deleted: bool = False,
 ) -> Transaction:
     """Store a transaction directly, bypassing the API's period rules."""
@@ -95,7 +94,6 @@ def insert_transaction(
     assert member is not None
     moment = datetime(day.year, day.month, day.day, 12, tzinfo=UTC)
     transaction = Transaction(
-        payee=payee,
         budget_id=UUID(budget_id),
         amount=amount,
         member_id=member.id,

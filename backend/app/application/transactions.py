@@ -27,7 +27,6 @@ class TransactionView:
     """A transaction as the API shows it (API_SURFACE.md § 1.5)."""
 
     id: UUID
-    payee: str
     budget_id: UUID
     category: str
     category_deleted: bool
@@ -43,7 +42,6 @@ class TransactionView:
 class NewTransaction:
     """A transaction to log. `date` and `member_id` have defaults."""
 
-    payee: str
     budget_id: UUID
     amount: int
     date: date | None = None
@@ -54,7 +52,6 @@ class NewTransaction:
 class TransactionChanges:
     """Fields to change. `None` means "leave as is"."""
 
-    payee: str | None = None
     budget_id: UUID | None = None
     amount: int | None = None
     date: date | None = None
@@ -65,7 +62,6 @@ def view(transaction: Transaction, budget: Budget, current: Period) -> Transacti
     """Shape *transaction* with its budget's current name and state."""
     return TransactionView(
         id=transaction.id,
-        payee=transaction.payee,
         budget_id=budget.id,
         category=budget.name,
         category_deleted=budget.is_deleted,
@@ -117,9 +113,11 @@ def _writable(
     return transaction, budget
 
 
-def _log(ctx: Context, auth: Auth, transaction: Transaction, action: str) -> None:
-    target = Target("transaction", transaction.id)
-    record(ctx, auth.member.id, action, {"payee": transaction.payee}, target)
+def _log(
+    ctx: Context, auth: Auth, transaction: Transaction, budget: Budget, action: str
+) -> None:
+    params = {"category": budget.name, "amount": transaction.amount}
+    record(ctx, auth.member.id, action, params, Target("transaction", transaction.id))
 
 
 def create(ctx: Context, auth: Auth, new: NewTransaction) -> TransactionView:
@@ -132,7 +130,6 @@ def create(ctx: Context, auth: Auth, new: NewTransaction) -> TransactionView:
     member = _member(ctx, new.member_id) if new.member_id else auth.member
     now = ctx.clock.now()
     transaction = Transaction(
-        payee=new.payee,
         budget_id=budget.id,
         amount=new.amount,
         member_id=member.id,
@@ -142,7 +139,7 @@ def create(ctx: Context, auth: Auth, new: NewTransaction) -> TransactionView:
         updated_at=now,
     )
     ctx.uow.transactions.add(transaction)
-    _log(ctx, auth, transaction, "tx.create")
+    _log(ctx, auth, transaction, budget, "tx.create")
     commit_mutation(ctx)
     return view(transaction, budget, current)
 
@@ -164,19 +161,17 @@ def update(
         transaction.budget_id = budget.id
     if changes.member_id is not None:
         transaction.member_id = _member(ctx, changes.member_id).id
-    if changes.payee is not None:
-        transaction.payee = changes.payee
     transaction.updated_at = ctx.clock.now()
-    _log(ctx, auth, transaction, "tx.update")
+    _log(ctx, auth, transaction, budget, "tx.update")
     commit_mutation(ctx)
     return view(transaction, budget, current)
 
 
 def delete(ctx: Context, auth: Auth, transaction_id: UUID) -> None:
     """Soft-delete a writable transaction."""
-    transaction, _ = _writable(ctx, transaction_id, period(ctx))
+    transaction, budget = _writable(ctx, transaction_id, period(ctx))
     transaction.is_deleted = True
-    _log(ctx, auth, transaction, "tx.delete")
+    _log(ctx, auth, transaction, budget, "tx.delete")
     commit_mutation(ctx)
 
 

@@ -41,7 +41,7 @@ def test_activity_targets_resolve_current_state(admin: TestClient) -> None:
     admin.patch(f"/api/v1/budgets/{budget['id']}", json={"goal": True})
     created = admin.post(
         "/api/v1/transactions",
-        json={"payee": "Flights", "budgetId": budget["id"], "amount": -100},
+        json={"budgetId": budget["id"], "amount": -100},
     ).json()
     jordan = add_member(admin, "jordan")
     targets = [e["target"] for e in _feed(admin)]
@@ -62,7 +62,7 @@ def test_activity_targets_of_deleted_records_are_none(admin: TestClient) -> None
     budget = add_budget(admin, "Fun")
     created = admin.post(
         "/api/v1/transactions",
-        json={"payee": "Cinema", "budgetId": budget["id"], "amount": -100},
+        json={"budgetId": budget["id"], "amount": -100},
     ).json()
     jordan = add_member(admin, "jordan")
     admin.delete(f"/api/v1/transactions/{created['id']}")
@@ -82,7 +82,7 @@ def test_activity_target_of_archived_transaction(
         at=old.created_at,
         target_type="transaction",
         target_id=old.id,
-        params={"payee": "Payee"},
+        params={"category": "Groceries", "amount": -100},
     )
     db.add(entry)
     db.commit()

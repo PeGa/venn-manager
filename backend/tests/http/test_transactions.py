@@ -23,12 +23,7 @@ def _add(
 ) -> dict[str, object]:
     response = client.post(
         "/api/v1/transactions",
-        json={
-            "payee": "Corner Coffee",
-            "budgetId": budget_id,
-            "amount": amount,
-            **extra,
-        },
+        json={"budgetId": budget_id, "amount": amount, **extra},
     )
     assert response.status_code == 201, response.json()
     body: dict[str, object] = response.json()
@@ -39,7 +34,7 @@ def test_create_transaction_defaults_to_today_and_caller(admin: TestClient) -> N
     budget = add_budget(admin, "Dining out", -35000)
     me = admin.get("/api/v1/auth/session").json()["member"]
     body = _add(admin, budget["id"])
-    assert body["payee"] == "Corner Coffee"
+    assert "payee" not in body
     assert body["amount"] == -2500
     assert body["date"] == "2026-09-28"
     assert body["memberId"] == me["id"]
@@ -57,7 +52,10 @@ def test_create_transaction_keeps_the_sign_as_sent(admin: TestClient) -> None:
 def test_create_transaction_records_activity(admin: TestClient, db: Session) -> None:
     budget = add_budget(admin, "Dining out")
     _add(admin, budget["id"])
-    assert _actions(db)[-1] == ("tx.create", {"payee": "Corner Coffee"})
+    assert _actions(db)[-1] == (
+        "tx.create",
+        {"category": "Dining out", "amount": -2500},
+    )
 
 
 def test_create_transaction_for_another_member(admin: TestClient) -> None:
@@ -72,12 +70,7 @@ def test_create_transaction_for_removed_member_returns_400(admin: TestClient) ->
     admin.delete(f"/api/v1/members/{jordan['id']}")
     response = admin.post(
         "/api/v1/transactions",
-        json={
-            "payee": "X",
-            "budgetId": budget["id"],
-            "amount": -1,
-            "memberId": jordan["id"],
-        },
+        json={"budgetId": budget["id"], "amount": -1, "memberId": jordan["id"]},
     )
     assert response.status_code == 400
     assert response.json()["field"] == "memberId"
@@ -87,7 +80,7 @@ def test_create_transaction_with_zero_amount_returns_400(admin: TestClient) -> N
     budget = add_budget(admin, "Dining out")
     response = admin.post(
         "/api/v1/transactions",
-        json={"payee": "X", "budgetId": budget["id"], "amount": 0},
+        json={"budgetId": budget["id"], "amount": 0},
     )
     assert response.json()["field"] == "amount"
 
@@ -97,7 +90,7 @@ def test_create_transaction_outside_the_period_returns_400(admin: TestClient) ->
     for day in ("2026-08-31", "2026-10-01"):
         response = admin.post(
             "/api/v1/transactions",
-            json={"payee": "X", "budgetId": budget["id"], "amount": -1, "date": day},
+            json={"budgetId": budget["id"], "amount": -1, "date": day},
         )
         assert response.status_code == 400
         assert response.json() == {
@@ -116,7 +109,7 @@ def test_create_transaction_on_a_future_day_of_the_period_returns_201(
 
 def test_create_transaction_with_unknown_budget_returns_400(admin: TestClient) -> None:
     response = admin.post(
-        "/api/v1/transactions", json={"payee": "X", "budgetId": UNKNOWN, "amount": -1}
+        "/api/v1/transactions", json={"budgetId": UNKNOWN, "amount": -1}
     )
     assert response.json()["field"] == "budgetId"
 
@@ -126,17 +119,18 @@ def test_create_transaction_with_deleted_budget_returns_410(admin: TestClient) -
     admin.delete(f"/api/v1/budgets/{budget['id']}")
     response = admin.post(
         "/api/v1/transactions",
-        json={"payee": "X", "budgetId": budget["id"], "amount": -1},
+        json={"budgetId": budget["id"], "amount": -1},
     )
     assert response.status_code == 410
 
 
-def test_create_transaction_with_blank_payee_returns_400(admin: TestClient) -> None:
+def test_create_transaction_with_a_payee_returns_400(admin: TestClient) -> None:
     budget = add_budget(admin, "Rent")
     response = admin.post(
         "/api/v1/transactions",
-        json={"payee": " ", "budgetId": budget["id"], "amount": -1},
+        json={"payee": "Shop", "budgetId": budget["id"], "amount": -1},
     )
+    assert response.status_code == 400
     assert response.json()["field"] == "payee"
 
 
@@ -144,25 +138,21 @@ def test_list_transactions_returns_current_period_newest_first(
     admin: TestClient, db: Session
 ) -> None:
     budget = add_budget(admin, "Groceries")
-    insert_transaction(db, str(budget["id"]), -100, date(2026, 9, 2), payee="old")
-    insert_transaction(db, str(budget["id"]), -100, date(2026, 8, 30), payee="august")
-    insert_transaction(
-        db, str(budget["id"]), -100, date(2026, 9, 2), payee="deleted", deleted=True
-    )
+    insert_transaction(db, str(budget["id"]), -100, date(2026, 9, 2))
+    insert_transaction(db, str(budget["id"]), -200, date(2026, 8, 30))
+    insert_transaction(db, str(budget["id"]), -300, date(2026, 9, 2), deleted=True)
     _add(admin, budget["id"])
     body = admin.get("/api/v1/transactions").json()
-    assert [t["payee"] for t in body["items"]] == ["Corner Coffee", "old"]
+    assert [t["amount"] for t in body["items"]] == [-2500, -100]
     assert (body["page"], body["size"], body["total"]) == (1, 50, 2)
 
 
 def test_list_transactions_pages(admin: TestClient, db: Session) -> None:
     budget = add_budget(admin, "Groceries")
     for day in range(1, 6):
-        insert_transaction(
-            db, str(budget["id"]), -100, date(2026, 9, day), payee=str(day)
-        )
+        insert_transaction(db, str(budget["id"]), -100 * day, date(2026, 9, day))
     body = admin.get("/api/v1/transactions?page=2&size=2").json()
-    assert [t["payee"] for t in body["items"]] == ["3", "2"]
+    assert [t["amount"] for t in body["items"]] == [-300, -200]
     assert body["total"] == 5
 
 
@@ -183,23 +173,17 @@ def test_update_transaction_changes_fields(admin: TestClient, db: Session) -> No
     created = _add(admin, dining["id"])
     response = admin.patch(
         f"/api/v1/transactions/{created['id']}",
-        json={
-            "payee": "Cinema",
-            "amount": -4200,
-            "budgetId": fun["id"],
-            "date": "2026-09-27",
-        },
+        json={"amount": -4200, "budgetId": fun["id"], "date": "2026-09-27"},
     )
     assert response.status_code == 200
     body = response.json()
-    assert (body["payee"], body["amount"], body["category"], body["date"]) == (
-        "Cinema",
+    assert (body["amount"], body["category"], body["date"]) == (
         -4200,
         "Fun",
         "2026-09-27",
     )
     assert body["updatedAt"] > body["createdAt"]
-    assert _actions(db)[-1] == ("tx.update", {"payee": "Cinema"})
+    assert _actions(db)[-1] == ("tx.update", {"category": "Fun", "amount": -4200})
 
 
 def test_update_transaction_twice_merges_activity(
@@ -276,7 +260,7 @@ def test_delete_transaction_soft_deletes_and_logs(
     created = _add(admin, budget["id"])
     assert admin.delete(f"/api/v1/transactions/{created['id']}").status_code == 204
     assert admin.get("/api/v1/transactions").json()["items"] == []
-    assert _actions(db)[-1] == ("tx.delete", {"payee": "Corner Coffee"})
+    assert _actions(db)[-1] == ("tx.delete", {"category": "Fun", "amount": -2500})
 
 
 def test_delete_archived_transaction_returns_409(
@@ -366,4 +350,4 @@ def test_member_can_log_transactions(admin: TestClient, other: TestClient) -> No
     budget = add_budget(admin, "Fun")
     add_member(admin, "jordan")
     sign_in(other, "jordan", "initial-pass")
-    assert _add(other, budget["id"])["payee"] == "Corner Coffee"
+    assert _add(other, budget["id"])["amount"] == -2500
