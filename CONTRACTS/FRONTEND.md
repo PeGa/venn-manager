@@ -100,12 +100,13 @@ Used on Overview links, Transactions and History.
 | Part | Content |
 |---|---|
 | Avatar | Member initial on the member's color |
-| Title | Payee |
+| Title | Category (the budget's name) |
 | Subtitle | Member real name · date (§ 9.2) |
-| Category | Budget name |
 | Amount | Signed, two decimals (§ 9.1). Positive amounts in accent green with a leading `+` |
 
-- A transaction whose budget was deleted is dimmed. Its category reads "{name} (deleted)". It cannot be selected, edited or removed.
+A transaction is a category, an amount, a member and a date. There is no payee or description.
+
+- A transaction whose budget was deleted is dimmed. Its title reads "{name} (deleted)". It cannot be selected, edited or removed.
 - A transaction by a removed member keeps the member's name, dimmed, with "(removed)".
 
 ### 4.2 Budget card
@@ -124,6 +125,7 @@ Used on Budget and Goals.
 
 **Stepper.**
 - The input shows the signed budget amount without the currency sign, e.g. `-800` or `2240`.
+- The amount's text is coral when negative (spending) and accent green when positive (income), neutral at zero. A spending concept typed as positive therefore shows green, which flags the mistake.
 - `+` adds 50.00 to the signed value. `−` subtracts 50.00. The arithmetic is literal: on `-800`, `+` gives `-750`.
 - Typed values are accepted on Enter, on blur, or 400 ms after the last keystroke.
 - An unparseable value reverts to the last saved amount.
@@ -172,29 +174,28 @@ A confirmation dialog appears before:
 
 Removing a single transaction happens immediately, with no confirmation.
 
+### 4.6 Category picker
+
+Used by the add bar, the inline edit bar and the touch edit sheet.
+
+- Closed: a button showing the selected category's name and a chevron.
+- Open: a box under the button with every non-deleted budget as a chip, goals included, in creation order. Chips wrap to the width available, so the number per line follows the viewport.
+- The selected category's chip is filled.
+- Choosing a chip selects it and closes the box. Escape, or a click outside the box, closes it without a change.
+- A long list keeps wrapping; the box never scrolls sideways.
+
 ---
 
 ## 5. Screens
 
 ### 5.1 Overview
 
-Wide: two columns. Left: hero, Recent activity. Right: Month-end forecast, Coming up.
-Narrow order: hero, forecast, Coming up, Recent activity.
+Wide: two columns. Left: hero, Recent activity. Right: Coming up.
+Narrow order: hero, Coming up, Recent activity.
 
-**Hero "Left to spend this month"** (narrow: "Left to spend").
-- Figure: `budgetTotals.leftToSpend`, whole units, 46 px mono (narrow 36 px). Can be negative.
-- Bar: `budgetTotals.spentPct`.
-- Line: "{spent} of {limit} budgeted · all members combined" (narrow: "{spent} of {limit}").
-- Goal budgets do not count here (BACKEND.md § 4.3).
-
-**Recent activity.**
-- The latest 5 entries. Caption "last 5 actions" (wide only).
-- Row: actor avatar, **actor name** + sentence (§ 7.1), then "{when} · {section}", then a chevron.
-- Hover background `#f4f1ea` on fine pointers.
-- Clicking a row navigates to its target and highlights it (§ 7.2). An entry whose target is `none` has no chevron and does nothing.
-
-**Month-end forecast.**
-- Wide: title "Month-end forecast", subtitle "Recomputed on every transaction", then three lines:
+**Hero "Month-end forecast"** (narrow: "Forecast"). How much money the household will have at the end of the month, counting every budget (BACKEND.md § 4.4).
+- Figure: `forecast.total`, two decimals, 46 px mono (narrow 36 px). Can be negative.
+- Wide only, three lines under the figure:
 
   | Line | Value |
   |---|---|
@@ -202,10 +203,13 @@ Narrow order: hero, forecast, Coming up, Recent activity.
   | Planned (still to move) | `forecast.planned`, with sign |
   | Logged transactions ({transactionCount}) | `forecast.transactionsNet`, with sign |
 
-  Then "Forecast total" with `forecast.total` (30 px mono), then the formula chip:
-  `{startCash} + {planned} + {transactionsNet} = {total}`. A negative term is written with `−` instead of `+`.
-- Narrow: title "Forecast", the total, and the formula chip.
-- All forecast figures use two decimals.
+- The formula, both layouts: `{startCash} + {planned} + {transactionsNet} = {total}`. A negative term is written with `−` instead of `+`. Each operator stays on the same line as its number.
+
+**Recent activity.**
+- The latest 5 entries. Caption "last 5 actions" (wide only).
+- Row: actor avatar, **actor name** + sentence (§ 7.1), then "{when} · {section}", then a chevron.
+- Hover background `#f4f1ea` on fine pointers.
+- Clicking a row navigates to its target and highlights it (§ 7.2). An entry whose target is `none` has no chevron and does nothing.
 
 **Coming up.**
 - Items from `upcoming`, already sorted by the server.
@@ -225,13 +229,12 @@ Narrow order: hero, forecast, Coming up, Recent activity.
 ### 5.3 Transactions
 
 **Add bar.**
-- Fields: Payee, Amount, Category button, Add button (wide label "Add", narrow label "+").
+- Fields: Amount, category picker (§ 4.6), Add button (wide label "Add", narrow label "+").
 - Amount is literal: `25` records +25.00, `-25` records −25.00 (§ 9.3 parsing).
-- Category button cycles through all non-deleted budgets in creation order, goals included. The first budget is preselected.
+- The first budget in creation order is preselected.
 - Add is disabled until the amount parses to a non-zero value.
-- Enter in Payee or Amount submits.
-- An empty payee is sent as "Untitled".
-- After a successful add, Payee and Amount clear. The category stays.
+- Enter in Amount submits.
+- After a successful add, Amount clears. The category stays.
 - With no budgets, the bar is replaced by "Add a budget concept in Settings to start logging", linking to Settings.
 - The date is always today in the household's timezone. The add bar has no date field.
 
@@ -240,14 +243,14 @@ Narrow order: hero, forecast, Coming up, Recent activity.
 - 200 per page. A "Show more" button appears when more exist.
 - Empty: "No transactions this month yet."
 
-**Selection, edit, remove.** See § 6. Edit changes payee, amount and category. The amount field shows the signed value and saves literally.
+**Selection, edit, remove.** See § 6. Edit changes the amount and the category. The amount field shows the signed value and saves literally.
 
 ### 5.4 History
 
 Read-only. Months before the current period, newest first.
 
 **Filters.**
-- Search input "Search payee, category or member". Debounced 300 ms.
+- Search input "Search category or member". Debounced 300 ms.
 - Member chips: "All" plus every member in `facets.members`.
 - Category chips: "All" plus every category in `facets.categories`. Deleted categories read "{name} (deleted)".
 - "Clear" resets all three. It is coral when any filter is active, faint otherwise.
@@ -338,16 +341,16 @@ Per user. Reached from "Signed in as" (§ 2.3). Not part of the nav list.
 - Selected rows use background `#dcebe1`.
 - Below the list: "Edit selected" (enabled only with exactly one row), "Remove selected" (enabled with one or more), and a hint: "Click a row to select · Ctrl/⌘ for several · Shift for a range", replaced by "{n} selected" when rows are selected.
 - Disabled buttons use background `#eeebe4` and text `#a9a49a`.
-- Edit opens the inline edit bar: Payee, Amount, Category button (cycles like the add bar), Save, Cancel.
+- Edit opens the inline edit bar: Amount, category picker (§ 4.6), Save, Cancel.
 - Opening the edit bar or changing the selection closes any open edit bar.
 
 ### 6.2 Coarse pointer
 
-- Tap on a row, outside select mode, opens the action sheet: title (payee), Edit, Remove, Cancel.
+- Tap on a row, outside select mode, opens the action sheet: title ("{category} · {amount}"), Edit, Remove, Cancel.
 - Long-press (450 ms) enters select mode and selects the row. Rows show `✓` instead of the avatar.
 - In select mode a tap toggles a row. A top bar shows "{n} selected", Remove, Done.
 - Long-press on a selected row opens the action sheet titled "{n} selected". Edit is disabled when more than one row is selected. Remove reads "Remove {n} transactions".
-- Edit opens the edit sheet: Payee, Amount, category chips, Cancel, Save.
+- Edit opens the edit sheet: Amount, category picker (§ 4.6), Cancel, Save.
 - Done or an empty selection leaves select mode.
 
 ### 6.3 Remove
@@ -365,9 +368,9 @@ The server sends an action and its parameters (API_SURFACE.md § 1.8). The clien
 
 | Action | Sentence |
 |---|---|
-| `tx.create` | added “{payee}” |
-| `tx.update` | edited “{payee}” |
-| `tx.delete` | removed “{payee}” |
+| `tx.create` | added {amount} to {category} |
+| `tx.update` | edited {amount} in {category} |
+| `tx.delete` | removed {amount} from {category} |
 | `tx.bulkDelete` | removed {count} transactions |
 | `budget.create` | added the {name} budget |
 | `budget.rename` | renamed {oldName} to {name} |
@@ -384,7 +387,7 @@ The server sends an action and its parameters (API_SURFACE.md § 1.8). The clien
 | `settings.openingBalance` | set the opening balance to {amount} |
 | `settings.memberIncome` | turned member income on / off |
 
-`{amount}` is formatted with § 9.1, whole units for budgets, two decimals for the opening balance.
+`{amount}` is formatted with § 9.1: signed with two decimals for transactions, whole units for budgets, two decimals for the opening balance.
 
 Section labels after the time: Transactions, History, Budget, Goals, Settings.
 
@@ -511,7 +514,7 @@ Only the actions listed here reach the backend. Navigation, selection, highlight
 - Keys are snake_case and named after what they label, not where they appear.
 - Placeholders use `{name}` and are filled at lookup time. Lookup never produces markup.
 - Strings that depend on a count have a key per plural category, e.g. `transactions_count_one` and `transactions_count_other`. The category comes from `Intl.PluralRules` in the user's language.
-- User data is never translated: budget names, payees, member names, the household name, the currency sign.
+- User data is never translated: budget names, member names, the household name, the currency sign.
 - Numbers are not localized (§ 9.1).
 
 ### 11.2 Which language is shown

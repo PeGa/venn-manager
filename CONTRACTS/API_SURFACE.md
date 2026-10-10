@@ -114,7 +114,6 @@ interface Budget {
 ```ts
 interface Transaction {
   id: UUID;
-  payee: string;
   budgetId: UUID;
   category: string;           // the budget's current name
   categoryDeleted: boolean;
@@ -143,7 +142,7 @@ interface UpcomingItem {
 }
 ```
 
-### 1.7 Forecast and budget totals
+### 1.7 Forecast
 
 ```ts
 interface Forecast {
@@ -152,13 +151,6 @@ interface Forecast {
   transactionsNet: Cents;
   transactionCount: number;
   total: Cents;               // startCash + planned + transactionsNet
-}
-
-interface BudgetTotals {
-  limit: Cents;               // ≥ 0
-  spent: Cents;               // ≥ 0
-  leftToSpend: Cents;         // limit − spent, may be negative
-  spentPct: number;           // 0–100
 }
 ```
 
@@ -194,7 +186,7 @@ interface ActivityEntry {
 
 | Action | params |
 |---|---|
-| `tx.create`, `tx.update`, `tx.delete` | `payee` |
+| `tx.create`, `tx.update`, `tx.delete` | `category`, `amount` |
 | `tx.bulkDelete` | `count` |
 | `budget.create`, `budget.schedule`, `budget.delete` | `name` |
 | `budget.rename` | `oldName`, `name` |
@@ -327,8 +319,8 @@ Writes require the admin role, otherwise `403 FORBIDDEN`. The list is part of `G
 | Method | Path | Body | Success | Errors |
 |---|---|---|---|---|
 | GET | `/transactions?page&size` | — | `200 Page<Transaction>` | |
-| POST | `/transactions` | `{ payee, budgetId, amount, date?, memberId? }` | `201 Transaction` | `400 VALIDATION`, `400 OUT_OF_PERIOD`, `410 GONE` (budget deleted) |
-| PATCH | `/transactions/{id}` | `Partial<{ payee, budgetId, amount, date, memberId }>` | `200 Transaction` | `400`, `404`, `410 GONE`, `409 READ_ONLY_HISTORY`, `409 CATEGORY_DELETED` |
+| POST | `/transactions` | `{ budgetId, amount, date?, memberId? }` | `201 Transaction` | `400 VALIDATION`, `400 OUT_OF_PERIOD`, `410 GONE` (budget deleted) |
+| PATCH | `/transactions/{id}` | `Partial<{ budgetId, amount, date, memberId }>` | `200 Transaction` | `400`, `404`, `410 GONE`, `409 READ_ONLY_HISTORY`, `409 CATEGORY_DELETED` |
 | DELETE | `/transactions/{id}` | — | `204` | `404`, `410 GONE`, `409 READ_ONLY_HISTORY`, `409 CATEGORY_DELETED` |
 | POST | `/transactions/bulk-delete` | `{ ids: UUID[] }` (1–500, duplicates collapsed) | `200 { deleted: UUID[]; notFound: UUID[] }` | `400`, `409 READ_ONLY_HISTORY`, `409 CATEGORY_DELETED` |
 
@@ -352,7 +344,6 @@ Writes require the admin role, otherwise `403 FORBIDDEN`. The list is part of `G
 interface Overview {
   period: Period;
   currencySign: string;
-  budgetTotals: BudgetTotals;
   forecast: Forecast;
   upcoming: UpcomingItem[];
   recentTransactions: Transaction[];   // latest 4 of the current period
@@ -366,7 +357,7 @@ interface Overview {
 
 Read-only. Months strictly before the current period.
 
-Shared filters: `q` (case-insensitive substring of payee, category name or member real name), `memberId`, `budgetId`.
+Shared filters: `q` (case-insensitive substring of category name or member real name), `memberId`, `budgetId`.
 
 | Method | Path | Success | Errors |
 |---|---|---|---|
@@ -420,7 +411,6 @@ Strings are trimmed before validation. Unknown fields are rejected.
 |---|---|
 | `amount` (transaction) | Integer cents in range, ≠ 0 |
 | `amount` (budget), `openingBalance` | Integer cents in range |
-| `payee` | 1–120 characters |
 | budget `name` | 1–60 characters, unique among non-deleted budgets, case-insensitive |
 | `schedule` | `null`, or `repeat` in the enum and `anchor` a valid date |
 | `goal`, `showMemberIncome`, `isAdmin` | Boolean |

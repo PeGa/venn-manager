@@ -20,7 +20,7 @@ Domain rules and every formula. Endpoints and shapes are in API_SURFACE.md.
 | `users` | `username` (unique), `real_name`, `password_hash`, `must_change_password`, `is_admin`, `language` (nullable), `theme`, `color`, `is_removed`, `created_at` | A member. `language` stays null until the member picks one |
 | `sessions` | `token_hash` (unique), `user_id`, `created_at` | Server-side sessions |
 | `budgets` | `name`, `amount`, `schedule_repeat`, `schedule_anchor`, `is_goal`, `is_deleted`, `created_by`, `created_at` | A concept and its budget |
-| `transactions` | `payee`, `budget_id`, `amount`, `member_id`, `date`, `created_by`, `created_at`, `updated_at`, `is_deleted` | |
+| `transactions` | `budget_id`, `amount`, `member_id`, `date`, `created_by`, `created_at`, `updated_at`, `is_deleted` | |
 | `activity` | `actor_id`, `action`, `params` (JSON), `target_type`, `target_id`, `target_section`, `at` | |
 
 Indexes: `transactions(date)`, `transactions(budget_id)`, `transactions(member_id)`, `budgets(name)`, `activity(at)`, `sessions(token_hash)`.
@@ -71,18 +71,9 @@ progressPct = 0                                   if amount = 0
 
 The budget is the plan. Money moved within the plan does not change the projection. Money moved beyond it replaces the plan.
 
-### 4.3 Budget totals ("Left to spend")
+### 4.3 Goals
 
-Over non-deleted, **non-goal** budgets:
-
-```
-limit       = Σ −amount               over budgets with amount < 0
-spent       = Σ max(0, −actual)       over budgets with amount ≤ 0
-leftToSpend = limit − spent
-spentPct    = 0 if limit = 0, else min(100, spent / limit × 100)
-```
-
-Goal budgets are money set aside on purpose. They count in the forecast (§ 4.4), not here.
+Goal budgets are money set aside on purpose. They count in the forecast (§ 4.4) like any other budget; only the Budget and Goals screens list them apart.
 
 ### 4.4 Forecast
 
@@ -123,7 +114,7 @@ slices     = per budget, Σ −amount of matching counted transactions with amou
              amount descending, pct = round_half_up(slice / spent × 100)
 ```
 
-Search `q` matches payee, budget name and member real name, case-insensitive. `%` and `_` in `q` are escaped, so they cannot widen the match.
+Search `q` matches budget name and member real name, case-insensitive. `%` and `_` in `q` are escaped, so they cannot widen the match.
 
 Facets list every budget and every member that appears in at least one archived, non-deleted transaction.
 
@@ -165,7 +156,7 @@ Items are sorted by due date, then name.
 - **Create**: name only. `amount 0`, no schedule, not a goal. Names are unique among non-deleted budgets, case-insensitive. The name of a deleted budget may be reused.
 - **Rename**: allowed at any time. Transactions reference the budget by id, so the new name shows everywhere, past months included.
 - **Amount**: absolute, signed. Persists until changed again.
-- **Goal**: a flag. It moves the budget between the Budget and Goals screens and excludes it from § 4.3. Every other rule is identical.
+- **Goal**: a flag. It moves the budget between the Budget and Goals screens (§ 4.3). Every other rule is identical.
 - **Delete**: soft. The budget disappears from every list, picker, total and Upcoming. Its transactions follow § 4.1. Patching or deleting a deleted budget returns `410 GONE`.
 
 ---
