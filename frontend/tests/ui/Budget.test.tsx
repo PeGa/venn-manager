@@ -26,6 +26,20 @@ describe("Budget", () => {
     expect(screen.queryByRole("region", { name: "Lisbon trip" })).toBeNull();
   });
 
+  it("colors the amount by its sign: coral spending, green income, neutral zero", async () => {
+    renderApp(createFakeApi().api, "/budget");
+    const amount = async (name: string) =>
+      within(await card(name)).getByRole<HTMLInputElement>("textbox", { name: `${name} amount` });
+    const groceries = await amount("Groceries");
+    expect(groceries.classList.contains("text-coral-text")).toBe(true);
+    expect((await amount("Paycheck")).classList.contains("text-accent")).toBe(true);
+    fireEvent.input(groceries, { target: { value: "800" } });
+    expect(groceries.classList.contains("text-accent")).toBe(true);
+    fireEvent.input(groceries, { target: { value: "0" } });
+    expect(groceries.classList.contains("text-accent")).toBe(false);
+    expect(groceries.classList.contains("text-coral-text")).toBe(false);
+  });
+
   it("steps the amount literally and saves the absolute value", async () => {
     const { api } = createFakeApi();
     renderApp(api, "/budget");

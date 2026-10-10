@@ -28,8 +28,8 @@ describe("History", () => {
   it("lists each month's rows, marking deleted categories", async () => {
     renderApp(createFakeApi().api, "/history");
     const august = await month("August 2026");
-    expect(await within(august).findByText("Cinema")).toBeTruthy();
-    expect(text(august)).toContain("Old fun (deleted)");
+    expect(await within(august).findByText("Old fun (deleted)")).toBeTruthy();
+    expect(text(august)).toContain("Old fun (deleted)Alex · Aug 15−$42.00");
     expect(within(august).queryByRole("option")).toBeNull();
   });
 
@@ -37,8 +37,8 @@ describe("History", () => {
     const { api } = createFakeApi();
     renderApp(api, "/history");
     await month("August 2026");
-    fireEvent.input(screen.getByLabelText("Search payee, category or member"), { target: { value: "market" } });
-    await waitFor(() => expect(api.historyMonths).toHaveBeenLastCalledWith(expect.objectContaining({ q: "market" })));
+    fireEvent.input(screen.getByLabelText("Search category or member"), { target: { value: "groceries" } });
+    await waitFor(() => expect(api.historyMonths).toHaveBeenLastCalledWith(expect.objectContaining({ q: "groceries" })));
     expect(text(await month("August 2026"))).toContain("1 of 3 transactions");
     await waitFor(() => expect(screen.queryByRole("region", { name: "July 2026" })).toBeNull());
   });
@@ -74,7 +74,7 @@ describe("History", () => {
     api.historyMonths.mockResolvedValue({ items: [], page: 1, size: 12, total: 0 });
     renderApp(api, "/history");
     expect(await screen.findByText("Nothing here yet. Months move here when they end.")).toBeTruthy();
-    fireEvent.input(screen.getByLabelText("Search payee, category or member"), { target: { value: "zzz" } });
+    fireEvent.input(screen.getByLabelText("Search category or member"), { target: { value: "zzz" } });
     expect(await screen.findByText("No transactions match these filters.")).toBeTruthy();
   });
 });

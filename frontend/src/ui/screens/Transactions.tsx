@@ -8,6 +8,7 @@ import { createMemo, createSignal, For, onCleanup, Show } from "solid-js";
 import { keys } from "@/adapters/queries";
 import { localDate } from "@/domain/dates";
 import type { Transaction } from "@/domain/model";
+import { formatMoney } from "@/domain/money";
 import { click, EMPTY, prune, toggle, type Selection } from "@/domain/selection";
 import type { NewTransaction, TransactionChanges } from "@/ports/api";
 import { Button, Skeleton } from "@/ui/components/basics";
@@ -84,6 +85,9 @@ export function Transactions() {
   };
   const endPress = () => clearTimeout(pressTimer);
 
+  const menuTitle = (row: Transaction) =>
+    `${row.category} · ${formatMoney(row.amount, household.data?.currencySign ?? "", { signed: true })}`;
+
   const activate = (row: Transaction, event: MouseEvent | KeyboardEvent) => {
     if (row.categoryDeleted) return;
     if (coarse()) {
@@ -92,7 +96,7 @@ export function Transactions() {
         return;
       }
       if (selection().ids.length > 0) setSelection(toggle(selection(), row.id));
-      else setMenu({ ids: [row.id], title: row.payee });
+      else setMenu({ ids: [row.id], title: menuTitle(row) });
       return;
     }
     setEditing(null);

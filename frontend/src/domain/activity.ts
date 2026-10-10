@@ -18,9 +18,6 @@ export type Section =
   | "settings";
 
 const SIMPLE: Partial<Record<ActivityEntry["action"], TranslationKey>> = {
-  "tx.create": "act_tx_create",
-  "tx.update": "act_tx_update",
-  "tx.delete": "act_tx_delete",
   "budget.create": "act_budget_create",
   "budget.rename": "act_budget_rename",
   "budget.schedule": "act_budget_schedule",
@@ -32,7 +29,13 @@ const SIMPLE: Partial<Record<ActivityEntry["action"], TranslationKey>> = {
   "settings.timezone": "act_settings_timezone",
 };
 
-/** What the actor did, e.g. `added “Greenfield Market”`. */
+const TRANSACTION: Partial<Record<ActivityEntry["action"], TranslationKey>> = {
+  "tx.create": "act_tx_create",
+  "tx.update": "act_tx_update",
+  "tx.delete": "act_tx_delete",
+};
+
+/** What the actor did, e.g. `added −$84.12 to Groceries`. */
 export function sentence(language: Language, entry: ActivityEntry, currencySign: string): string {
   const { action, params } = entry;
   const vars: Record<string, string | number> = {};
@@ -44,6 +47,10 @@ export function sentence(language: Language, entry: ActivityEntry, currencySign:
     return translate(language, simple, vars);
   }
   const amount = Number(params["amount"] ?? 0);
+  const transaction = TRANSACTION[action];
+  if (transaction !== undefined) {
+    return translate(language, transaction, { ...vars, amount: formatMoney(amount, currencySign, { signed: true }) });
+  }
   switch (action) {
     case "tx.bulkDelete":
       return plural(language, "act_tx_bulk_delete", Number(params["count"] ?? 0));

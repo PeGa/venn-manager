@@ -1,43 +1,21 @@
 /** Overview (FRONTEND.md § 5.1). */
 import { A } from "@solidjs/router";
 import { useQuery } from "@tanstack/solid-query";
-import { For, Show, type JSX } from "solid-js";
+import { createSignal, For, Show, type JSX } from "solid-js";
 
 import { keys } from "@/adapters/queries";
 import { dueStatus } from "@/domain/dates";
 import { formatMoney } from "@/domain/money";
-import type { Forecast, Overview as OverviewData, UpcomingItem } from "@/domain/model";
+import type { Forecast, Member, Overview as OverviewData, UpcomingItem } from "@/domain/model";
 import { ActivityList } from "@/ui/components/ActivityList";
-import { Bar, Button, Card, CardTitle, Skeleton } from "@/ui/components/basics";
+import { Button, Card, CardTitle, Skeleton } from "@/ui/components/basics";
+import { ExplainDialog } from "@/ui/screens/overview/Explain";
 import { useServices } from "@/ui/services";
 
-function Hero(props: { data: OverviewData }) {
-  const { t, narrow } = useServices();
-  const totals = () => props.data.budgetTotals;
-  const money = (cents: number) => formatMoney(cents, props.data.currencySign, { decimals: 0 });
-  const label = () => t(narrow() ? "overview_left_short" : "overview_left_long");
-  return (
-    <section aria-label={label()} class="rounded-card bg-primary text-on-primary" classList={{ "p-6": !narrow(), "px-5 py-[18px]": narrow() }}>
-      <p class="text-[13px] opacity-80">{label()}</p>
-      <p class="mt-1 font-mono font-medium tracking-[-1px]" classList={{ "text-[46px]": !narrow(), "text-[36px]": narrow() }}>
-        {money(totals().leftToSpend)}
-      </p>
-      <div class="mt-4">
-        <Bar pct={totals().spentPct} onDark label={label()} />
-      </div>
-      <p class="mt-2 text-xs opacity-85">
-        {t(narrow() ? "overview_budgeted_short" : "overview_budgeted_long", {
-          spent: money(totals().spent),
-          limit: money(totals().limit),
-        })}
-      </p>
-    </section>
-  );
-}
-
-// Non-breaking spaces keep each operator with its number when the chip wraps.
+// Non-breaking spaces keep each operator with its number when the line wraps.
 const NBSP = "\u00a0";
 
+/** `{startCash} + {planned} + {transactionsNet} = {total}`, negative terms with `−`. */
 export function formula(forecast: Forecast, sign: string): string {
   const money = (cents: number) => formatMoney(Math.abs(cents), sign);
   const term = (cents: number) => `${cents < 0 ? "−" : "+"}${NBSP}${money(cents)}`;
@@ -45,42 +23,50 @@ export function formula(forecast: Forecast, sign: string): string {
   return [formatMoney(forecast.startCash, sign), term(forecast.planned), term(forecast.transactionsNet), total].join(" ");
 }
 
-function ForecastCard(props: { forecast: Forecast; sign: string }) {
+/** The month-end forecast: how much money the household will have (BACKEND.md § 4.4). */
+function Hero(props: { data: OverviewData; members: Member[] }) {
   const { t, narrow } = useServices();
-  const money = (cents: number, signed = false) => formatMoney(cents, props.sign, { signed });
-  const line = (label: string, value: string) => (
-    <div class="flex justify-between border-b border-hairline py-2 text-sm">
-      <span>{label}</span>
+  const [explaining, setExplaining] = createSignal(false);
+  const forecast = () => props.data.forecast;
+  const money = (cents: number, signed = false) => formatMoney(cents, props.data.currencySign, { signed });
+  const label = () => t(narrow() ? "forecast_title_short" : "forecast_title_long");
+  const line = (name: string, value: string) => (
+    <div class="flex justify-between border-b border-white/15 py-1.5 text-[13px]">
+      <span class="opacity-85">{name}</span>
       <span class="font-mono">{value}</span>
     </div>
   );
-  const title = () => t(narrow() ? "forecast_title_short" : "forecast_title_long");
   return (
-    <section aria-label={title()} class="rounded-card border border-card-border bg-card" classList={{ "p-[22px]": !narrow(), "px-4 py-3.5": narrow() }}>
-      <Show
-        when={!narrow()}
-        fallback={
-          <div class="flex items-baseline justify-between">
-            <h2 class="text-sm font-bold">{title()}</h2>
-            <span class="font-mono text-[22px] font-medium text-primary dark:text-ink">{money(props.forecast.total)}</span>
-          </div>
-        }
-      >
-        <h2 class="font-bold">{title()}</h2>
-        <p class="mb-3.5 mt-0.5 text-xs text-muted">{t("forecast_subtitle")}</p>
-        <div class="flex flex-col gap-0.5">
-          {line(t("forecast_start"), money(props.forecast.startCash))}
-          {line(t("forecast_planned"), money(props.forecast.planned, true))}
-          {line(t("forecast_logged", { n: props.forecast.transactionCount }), money(props.forecast.transactionsNet, true))}
-        </div>
-        <div class="mt-3.5 flex items-baseline justify-between">
-          <b>{t("forecast_total")}</b>
-          <span class="font-mono text-[30px] font-medium text-primary dark:text-ink">{money(props.forecast.total)}</span>
+    <section aria-label={label()} class="rounded-card bg-primary text-on-primary" classList={{ "p-6": !narrow(), "px-5 py-[18px]": narrow() }}>
+      <p class="text-[13px] opacity-80">{label()}</p>
+      <p class="mt-1 font-mono font-medium tracking-[-1px]" classList={{ "text-[46px]": !narrow(), "text-[36px]": narrow() }}>
+        {money(forecast().total)}
+      </p>
+      <Show when={!narrow()}>
+        <div class="mt-3 flex flex-col">
+          {line(t("forecast_start"), money(forecast().startCash))}
+          {line(t("forecast_planned"), money(forecast().planned, true))}
+          {line(t("forecast_logged", { n: forecast().transactionCount }), money(forecast().transactionsNet, true))}
         </div>
       </Show>
-      <p class="mt-2.5 rounded-control bg-highlight px-3 py-2.5 font-mono text-xs font-medium text-[#3c5a49] dark:text-accent">
-        {formula(props.forecast, props.sign)}
+      <p class="mt-3 rounded-control bg-white/10 px-3 py-2.5 font-mono text-xs font-medium">
+        {formula(forecast(), props.data.currencySign)}
       </p>
+      <p class="mt-2.5 flex items-center gap-2 text-xs">
+        <span class="opacity-60">{t("explain_hint")}</span>
+        <button type="button" onClick={() => setExplaining(true)} class="rounded-chip border border-white/30 px-2.5 py-1 font-semibold">
+          {t("action_explain")}
+        </button>
+      </p>
+      <Show when={explaining()}>
+        <ExplainDialog
+          forecast={forecast()}
+          sign={props.data.currencySign}
+          today={props.data.period.today}
+          members={props.members}
+          onClose={() => setExplaining(false)}
+        />
+      </Show>
     </section>
   );
 }
@@ -180,8 +166,7 @@ export function Overview() {
             when={!narrow()}
             fallback={
               <div class="flex flex-col gap-2.5">
-                <Hero data={data()} />
-                <ForecastCard forecast={data().forecast} sign={data().currencySign} />
+                <Hero data={data()} members={household.data?.members ?? []} />
                 {upcoming()}
                 {activity()}
               </div>
@@ -189,11 +174,10 @@ export function Overview() {
           >
             <div class="grid grid-cols-[1.1fr_1fr] gap-[18px]">
               <div class="flex flex-col gap-[18px]">
-                <Hero data={data()} />
+                <Hero data={data()} members={household.data?.members ?? []} />
                 {activity()}
               </div>
               <div class="flex flex-col gap-[18px] self-start">
-                <ForecastCard forecast={data().forecast} sign={data().currencySign} />
                 {upcoming()}
               </div>
             </div>

@@ -100,7 +100,12 @@ export function BudgetCard(props: {
                 }
               }}
               class="rounded-lg border border-input-border bg-card px-1 py-[5px] text-center font-mono text-sm font-medium"
-              classList={{ "w-16": !narrow(), "w-[58px] text-[13px]": narrow() }}
+              classList={{
+                "w-16": !narrow(),
+                "w-[58px] text-[13px]": narrow(),
+                "text-coral-text": amount() < 0,
+                "text-accent": amount() > 0,
+              }}
             />
             <button type="button" class={stepper} aria-label={t("stepper_increase")} onClick={() => change(stepAmount(amount(), 1))}>
               +

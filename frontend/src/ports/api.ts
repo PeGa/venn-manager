@@ -84,7 +84,6 @@ export interface BudgetChanges {
 }
 
 export interface NewTransaction {
-  payee: string;
   budgetId: Uuid;
   amount: Cents;
   date?: IsoDate;

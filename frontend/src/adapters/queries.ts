@@ -4,6 +4,7 @@
  */
 import { QueryCache, QueryClient } from "@tanstack/solid-query";
 
+import type { Page } from "@/domain/model";
 import { ApiError, type HistoryQuery } from "@/ports/api";
 
 export const MAX_RETRIES = 3;
@@ -15,6 +16,7 @@ export const keys = {
   overview: ["overview"] as const,
   budgets: ["budgets"] as const,
   transactions: (size: number) => ["transactions", size] as const,
+  allTransactions: ["transactions", "all"] as const,
   balance: ["balance"] as const,
   facets: ["history", "facets"] as const,
   months: (filters: HistoryQuery) => ["history", "months", filters] as const,
@@ -23,6 +25,16 @@ export const keys = {
   breakdown: (month: string, filters: HistoryQuery) =>
     ["history", "breakdown", month, filters] as const,
 };
+
+/** Every item of a paged list, reading page 1, 2, … until the total is reached. */
+export async function allPages<T>(fetchPage: (page: number) => Promise<Page<T>>): Promise<T[]> {
+  const items: T[] = [];
+  for (let page = 1; ; page++) {
+    const { items: batch, total } = await fetchPage(page);
+    items.push(...batch);
+    if (batch.length === 0 || items.length >= total) return items;
+  }
+}
 
 /** Retry network and server failures only. A 4xx will not fix itself. */
 export function shouldRetry(failures: number, error: unknown): boolean {

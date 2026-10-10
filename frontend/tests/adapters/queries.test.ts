@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
-import { createQueryClient, keys, shouldRetry } from "@/adapters/queries";
+import { allPages, createQueryClient, keys, shouldRetry } from "@/adapters/queries";
 import { ApiError } from "@/ports/api";
 
 describe("shouldRetry", () => {
@@ -49,5 +49,21 @@ describe("query error hook", () => {
       .query({ queryKey: ["x"], queryFn: () => Promise.reject(failure), retry: false })
       .catch(() => undefined);
     expect(seen).toEqual([[failure, ["x"]]]);
+  });
+});
+
+describe("allPages", () => {
+  it("reads pages until it has every item", async () => {
+    const items = [1, 2, 3, 4, 5];
+    const fetchPage = vi.fn((page: number) =>
+      Promise.resolve({ items: items.slice((page - 1) * 2, page * 2), page, size: 2, total: items.length }),
+    );
+    expect(await allPages(fetchPage)).toEqual(items);
+    expect(fetchPage.mock.calls.map(([page]) => page)).toEqual([1, 2, 3]);
+  });
+
+  it("stops on an empty page even if the total says more", async () => {
+    const fetchPage = vi.fn((page: number) => Promise.resolve({ items: page === 1 ? [1] : [], page, size: 2, total: 9 }));
+    expect(await allPages(fetchPage)).toEqual([1]);
   });
 });

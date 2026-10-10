@@ -59,10 +59,9 @@ function budget(id: string, name: string, amount: number, actual: number, goal =
   };
 }
 
-function transaction(id: string, payee: string, b: Budget, amount: number, date: string, memberId = ALEX.id): Transaction {
+function transaction(id: string, b: Budget, amount: number, date: string, memberId = ALEX.id): Transaction {
   return {
     id,
-    payee,
     budgetId: b.id,
     category: b.name,
     categoryDeleted: false,
@@ -107,10 +106,10 @@ export function seedState(): FakeState {
     },
     budgets: [groceries, dining, paycheck, trip],
     transactions: [
-      transaction("t-market", "Greenfield Market", groceries, -8412, "2026-09-28"),
-      transaction("t-coffee", "Corner Coffee", dining, -640, "2026-09-28", JORDAN.id),
-      transaction("t-pay", "Paycheck Northwind", paycheck, 224000, "2026-09-27", JORDAN.id),
-      transaction("t-bistro", "Kiez Bistro", dining, -6400, "2026-09-27"),
+      transaction("t-market", groceries, -8412, "2026-09-28"),
+      transaction("t-coffee", dining, -640, "2026-09-28", JORDAN.id),
+      transaction("t-pay", paycheck, 224000, "2026-09-27", JORDAN.id),
+      transaction("t-bistro", dining, -6400, "2026-09-27"),
     ],
     activity: [
       {
@@ -125,14 +124,13 @@ export function seedState(): FakeState {
         id: "a2",
         actorId: ALEX.id,
         action: "tx.create",
-        params: { payee: "Greenfield Market" },
+        params: { category: "Groceries", amount: -8412 },
         at: "2026-09-28T09:58:00Z",
         target: { type: "transaction", id: "t-market", archived: false, month: "2026-09" },
       },
     ],
     overview: {
-      budgetTotals: { limit: 115000, spent: 67440, leftToSpend: 47560, spentPct: 58.64 },
-      forecast: { startCash: 1290000, planned: -28520, transactionsNet: 208548, transactionCount: 4, total: 1470028 },
+      forecast: { startCash: 1290000, planned: -59960, transactionsNet: 208548, transactionCount: 4, total: 1438588 },
       upcoming: [
         {
           budgetId: "b-rent",
@@ -256,14 +254,13 @@ export function createFakeApi(state: FakeState = seedState()): { api: Spied<Api>
       ok({ items: state.transactions, page: 1, size: 200, total: state.transactions.length }),
     createTransaction: (input) => {
       const b = state.budgets.find((x) => x.id === input.budgetId)!;
-      const created = transaction(`t-${String(state.transactions.length + 1)}`, input.payee, b, input.amount, PERIOD.today);
+      const created = transaction(`t-${String(state.transactions.length + 1)}`, b, input.amount, PERIOD.today);
       state.transactions.unshift(created);
       recompute(b);
       return ok(created);
     },
     updateTransaction: (id, changes) => {
       const target = state.transactions.find((t) => t.id === id)!;
-      if (changes.payee !== undefined) target.payee = changes.payee;
       if (changes.amount !== undefined) target.amount = changes.amount;
       if (changes.budgetId !== undefined) {
         const b = state.budgets.find((x) => x.id === changes.budgetId)!;
@@ -311,11 +308,11 @@ export function createFakeApi(state: FakeState = seedState()): { api: Spied<Api>
       const rows: Transaction[] =
         month === "2026-08"
           ? [
-              { ...transaction("h-pay", "Paycheck Northwind", state.budgets[2]!, 224000, "2026-08-29", JORDAN.id), archived: true },
-              { ...transaction("h-market", "Greenfield Market", state.budgets[0]!, -21240, "2026-08-24"), archived: true },
-              { ...transaction("h-cinema", "Cinema", budget("b-old", "Old fun", 0, 0), -4200, "2026-08-15"), archived: true, categoryDeleted: true },
+              { ...transaction("h-pay", state.budgets[2]!, 224000, "2026-08-29", JORDAN.id), archived: true },
+              { ...transaction("h-market", state.budgets[0]!, -21240, "2026-08-24"), archived: true },
+              { ...transaction("h-cinema", budget("b-old", "Old fun", 0, 0), -4200, "2026-08-15"), archived: true, categoryDeleted: true },
             ]
-          : [{ ...transaction("h-july", "Greenfield Market", state.budgets[0]!, -30175, "2026-07-22"), archived: true }];
+          : [{ ...transaction("h-july", state.budgets[0]!, -30175, "2026-07-22"), archived: true }];
       return ok({ items: rows, page: 1, size: 200, total: rows.length });
     },
     historyBreakdown: (month) =>

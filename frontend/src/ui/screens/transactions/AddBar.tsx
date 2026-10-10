@@ -1,4 +1,4 @@
-/** The add bar (FRONTEND.md § 5.3): payee, literal signed amount, category, Add. */
+/** The add bar (FRONTEND.md § 5.3): literal signed amount, category, Add. */
 import { A } from "@solidjs/router";
 import { createSignal, Show } from "solid-js";
 
@@ -6,27 +6,17 @@ import type { Budget } from "@/domain/model";
 import { parseAmount } from "@/domain/money";
 import type { NewTransaction } from "@/ports/api";
 import { Button } from "@/ui/components/basics";
+import { CategoryPicker } from "@/ui/components/CategoryPicker";
 import { useServices } from "@/ui/services";
-
-export const UNTITLED = "Untitled";
-
-/** The budget after *current* in creation order, wrapping around. */
-export function nextBudget(budgets: Budget[], current: string | null): string | null {
-  if (budgets.length === 0) return null;
-  const index = budgets.findIndex((budget) => budget.id === current);
-  return budgets[(index + 1) % budgets.length]?.id ?? null;
-}
 
 export function AddBar(props: { budgets: Budget[]; add: (transaction: NewTransaction) => Promise<boolean> }) {
   const { t, narrow } = useServices();
-  const [payee, setPayee] = createSignal("");
   const [amount, setAmount] = createSignal("");
   const [chosen, setChosen] = createSignal<string | null>(null);
   const budgetId = () => {
     const id = chosen();
     return props.budgets.some((budget) => budget.id === id) ? id : (props.budgets[0]?.id ?? null);
   };
-  const budgetName = () => props.budgets.find((budget) => budget.id === budgetId())?.name ?? "";
   const cents = () => parseAmount(amount());
   const ready = () => budgetId() !== null && (cents() ?? 0) !== 0;
 
@@ -34,11 +24,7 @@ export function AddBar(props: { budgets: Budget[]; add: (transaction: NewTransac
     const id = budgetId();
     const value = cents();
     if (id === null || value === null || value === 0) return;
-    const saved = await props.add({ payee: payee().trim() || UNTITLED, budgetId: id, amount: value });
-    if (saved) {
-      setPayee("");
-      setAmount("");
-    }
+    if (await props.add({ budgetId: id, amount: value })) setAmount("");
   };
   const onEnter = (event: KeyboardEvent) => {
     if (event.key === "Enter") void submit();
@@ -55,21 +41,12 @@ export function AddBar(props: { budgets: Budget[]; add: (transaction: NewTransac
       }
     >
       <div
-        class="flex items-center"
+        class="relative flex items-center"
         classList={{
           "gap-2.5 rounded-2xl border border-card-border bg-card px-3.5 py-3": !narrow(),
           "gap-1.5": narrow(),
         }}
       >
-        <input
-          aria-label={t("field_payee")}
-          placeholder={t("field_payee")}
-          value={payee()}
-          maxLength={120}
-          onInput={(event) => setPayee(event.currentTarget.value)}
-          onKeyDown={onEnter}
-          class={`${input} flex-1`}
-        />
         <input
           aria-label={t("field_amount")}
           placeholder={narrow() ? "0.00" : t("field_amount")}
@@ -77,18 +54,9 @@ export function AddBar(props: { budgets: Budget[]; add: (transaction: NewTransac
           value={amount()}
           onInput={(event) => setAmount(event.currentTarget.value)}
           onKeyDown={onEnter}
-          class={`${input} font-mono`}
-          classList={{ "w-[100px]": !narrow(), "w-[72px]": narrow() }}
+          class={`${input} flex-1 font-mono`}
         />
-        <button
-          type="button"
-          aria-label={t("category_button", { name: budgetName() })}
-          onClick={() => setChosen(nextBudget(props.budgets, budgetId()))}
-          class="truncate rounded-control border border-input-border bg-card py-2.5 text-[13px]"
-          classList={{ "max-w-[160px] px-3": !narrow(), "max-w-[84px] px-2 text-xs": narrow() }}
-        >
-          {budgetName()}
-        </button>
+        <CategoryPicker budgets={props.budgets} selected={budgetId()} onSelect={setChosen} class="min-w-0 flex-1" />
         <Button kind="primary" disabled={!ready()} onClick={() => void submit()} aria-label={t("action_add")}>
           {narrow() ? "+" : t("action_add")}
         </Button>

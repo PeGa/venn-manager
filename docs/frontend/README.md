@@ -30,7 +30,7 @@ The frontend is hexagonal (AGENTS.md § Hexagonal architecture).
 
 | Path | Holds |
 |---|---|
-| `src/domain/` | Pure logic: money, amount parsing, dates, budget figures and notes, selection, activity sentences, pie geometry, the data model |
+| `src/domain/` | Pure logic: money, amount parsing, dates, budget figures and notes, the forecast's terms, selection, activity sentences, pie geometry, the data model |
 | `src/ports/api.ts` | The `Api` interface every screen uses, and `ApiError` |
 | `src/adapters/http.ts` | `Api` over `fetch` |
 | `src/adapters/queries.ts` | Query keys, retry policy, the query client |

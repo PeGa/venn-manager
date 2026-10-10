@@ -66,7 +66,6 @@ export interface Budget {
 
 export interface Transaction {
   id: Uuid;
-  payee: string;
   budgetId: Uuid;
   category: string;
   categoryDeleted: boolean;
@@ -94,13 +93,6 @@ export interface Forecast {
   transactionsNet: Cents;
   transactionCount: number;
   total: Cents;
-}
-
-export interface BudgetTotals {
-  limit: Cents;
-  spent: Cents;
-  leftToSpend: Cents;
-  spentPct: number;
 }
 
 export type ActivityTarget =
@@ -142,7 +134,6 @@ export interface ActivityEntry {
 export interface Overview {
   period: Period;
   currencySign: string;
-  budgetTotals: BudgetTotals;
   forecast: Forecast;
   upcoming: UpcomingItem[];
   recentTransactions: Transaction[];

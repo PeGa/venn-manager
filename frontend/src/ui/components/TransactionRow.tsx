@@ -1,4 +1,4 @@
-/** One transaction (FRONTEND.md § 4.1). Wide: columns. Narrow: a compact card. */
+/** One transaction (FRONTEND.md § 4.1): titled by its category. */
 import { Show, type JSX } from "solid-js";
 
 import { dayLabel } from "@/domain/dates";
@@ -38,14 +38,11 @@ export function TransactionRow(props: {
         {props.badge}
       </Show>
       <span class="min-w-0 flex-1" classList={{ "text-sm": !narrow(), "text-[13px]": narrow() }}>
-        <b class="block truncate">{props.transaction.payee}</b>
+        <b class="block truncate">{category()}</b>
         <span class="block truncate text-muted" classList={{ "text-xs": !narrow(), "text-[11px]": narrow() }}>
-          {narrow() ? `${category()} · ${day()}` : `${memberName()} · ${day()}`}
+          {`${memberName()} · ${day()}`}
         </span>
       </span>
-      <Show when={!narrow()}>
-        <span class="w-[130px] truncate text-[13px] text-muted">{category()}</span>
-      </Show>
       <span
         class="text-right font-mono font-medium"
         classList={{

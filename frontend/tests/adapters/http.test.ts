@@ -110,7 +110,7 @@ describe("http adapter", () => {
     await api.removeMember("m1");
     await api.budgets();
     await api.transactions({ size: 200 });
-    await api.createTransaction({ payee: "x", budgetId: "b1", amount: -1 });
+    await api.createTransaction({ budgetId: "b1", amount: -1 });
     await api.updateTransaction("t1", { amount: -2 });
     await api.deleteTransaction("t1");
     await api.bulkDeleteTransactions(["t1", "t2"]);

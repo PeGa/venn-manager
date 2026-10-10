@@ -9,9 +9,9 @@ function entry(action: ActivityEntry["action"], params: ActivityEntry["params"],
 
 describe("sentence", () => {
   it.each([
-    [entry("tx.create", { payee: "Greenfield Market" }), "added “Greenfield Market”"],
-    [entry("tx.update", { payee: "Kiez" }), "edited “Kiez”"],
-    [entry("tx.delete", { payee: "Kiez" }), "removed “Kiez”"],
+    [entry("tx.create", { category: "Groceries", amount: -8412 }), "added −$84.12 to Groceries"],
+    [entry("tx.update", { category: "Paycheck", amount: 224000 }), "edited +$2,240.00 in Paycheck"],
+    [entry("tx.delete", { category: "Dining out", amount: -640 }), "removed −$6.40 from Dining out"],
     [entry("tx.bulkDelete", { count: 3 }), "removed 3 transactions"],
     [entry("tx.bulkDelete", { count: 1 }), "removed 1 transaction"],
     [entry("budget.create", { name: "Fun" }), "added the Fun budget"],
@@ -36,8 +36,8 @@ describe("sentence", () => {
   });
 
   it("speaks Spanish", () => {
-    expect(sentence("es", entry("tx.create", { payee: "Mercado" }), "$")).toBe(
-      "añadió “Mercado”",
+    expect(sentence("es", entry("tx.create", { category: "Mercado", amount: -500 }), "$")).toBe(
+      "añadió −$5.00 a Mercado",
     );
   });
 });
