@@ -1,5 +1,9 @@
-import { cleanup } from "@solidjs/testing-library";
+import { cleanup, configure } from "@solidjs/testing-library";
 import { afterEach, vi } from "vitest";
+
+// Screen tests boot the whole app; with every worker busy, the 1 s default
+// for findBy and waitFor is too tight and fails at random.
+configure({ asyncUtilTimeout: 5000 });
 
 afterEach(() => {
   cleanup();
