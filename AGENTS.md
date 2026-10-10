@@ -247,7 +247,7 @@ venn-manager/
 │   ├── tsconfig.json
 │   └── package.json
 ├── CONTRACTS/
-├── docs/
+├── docs/                   # user docs
 ├── AGENTS.md
 └── README.md
 ```
