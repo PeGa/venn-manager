@@ -6,6 +6,12 @@ A shared ledger for the people in the overlap: couples, roommates, families. Bud
 
 Venn Manager is self-hosted. It runs in one container on your own machine, keeps its data in one SQLite file, and talks to nothing else.
 
+<p align="center">
+  <img src="docs/screenshots/overview-mobile.es.png" width="13%" alt="Overview on a phone, in Spanish">
+  <img src="docs/screenshots/explain.png" width="42.5%" alt="The Explain dialog listing how the forecast adds up">
+  <img src="docs/screenshots/transactions-dark.es.png" width="42.5%" alt="Transactions in the dark theme, in Spanish, with the category picker open">
+</p>
+
 ## What it does
 
 - **One ledger for the whole household.** Every member signs in with their own account and sees the same money. Any member can add transactions and change budgets; admins manage accounts.

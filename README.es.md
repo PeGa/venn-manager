@@ -6,6 +6,12 @@ Un libro de cuentas compartido para los que comparten la billetera: parejas, com
 
 Venn Manager se instala en tu propia computadora o servidor. Corre en un solo contenedor, guarda sus datos en un único archivo SQLite y no se conecta con nada más.
 
+<p align="center">
+  <img src="docs/screenshots/overview-mobile.es.png" width="13%" alt="Resumen en el celular, en español">
+  <img src="docs/screenshots/explain.png" width="42.5%" alt="El diálogo Explicar, con el detalle de la previsión, en inglés">
+  <img src="docs/screenshots/transactions-dark.es.png" width="42.5%" alt="Movimientos con el tema oscuro y el selector de categorías abierto">
+</p>
+
 ## Qué hace
 
 - **Un solo libro para todo el hogar.** Cada miembro entra con su propia cuenta y ve la misma plata. Cualquier miembro puede agregar movimientos y cambiar presupuestos; los administradores manejan las cuentas.
