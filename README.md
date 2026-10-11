@@ -97,3 +97,15 @@ npm run lint
 | `docs/backend/README.md` | Backend setup, layout, how to change things |
 | `docs/frontend/README.md` | Frontend setup, layout, how to change things |
 | `AGENTS.md` | Rules for any agent working on this repository |
+
+## License
+
+Copyright (C) 2026 PeGa!
+
+Venn Manager is free software: you can redistribute it and/or modify it under the terms of the GNU Affero General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version. See [`LICENSE`](LICENSE).
+
+| You may | You must |
+|---|---|
+| Use it, self-host it, study it, change it | Keep the copyright and license notices |
+| Share it, modified or not | Share your source under the same license |
+| Run a modified version as a service for others | Offer its source to the people who use it over the network |

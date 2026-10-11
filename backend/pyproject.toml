@@ -1,6 +1,7 @@
 [project]
 name = "venn-manager-backend"
 version = "0.1.0"
+license = "AGPL-3.0-or-later"
 description = "Venn Manager API. Behaviour: CONTRACTS/BACKEND.md and CONTRACTS/API_SURFACE.md."
 requires-python = ">=3.12"
 
