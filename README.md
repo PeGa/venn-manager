@@ -1,26 +1,93 @@
 # Venn Manager
 
-A shared-wallet finance manager for one household: a couple, roommates, any number of people sharing one ledger. Signed transactions, budgets that plan the month, and a forecast. Not a debt tracker, not a currency converter, not an accounting tool.
+**English** · [Español](README.es.md)
 
-## Status
+A shared ledger for the people in the overlap: couples, roommates, families. Budgets plan the month, transactions log what moves, and a forecast tells you what you'll really have when the month ends.
 
-| Part | State |
-|---|---|
-| Backend | Rewritten: FastAPI, hexagonal, all 27 endpoints of `CONTRACTS/API_SURFACE.md` |
-| Frontend | Rewritten: SolidJS, hexagonal, every screen of `CONTRACTS/FRONTEND.md`, web and mobile layouts, English and Spanish |
-| Desktop | Electron, future phase |
+Venn Manager is self-hosted. It runs in one container on your own machine, keeps its data in one SQLite file, and talks to nothing else.
 
-## Stack
+## What it does
 
-| Layer | Technology |
-|---|---|
-| Backend | Python 3.12+, FastAPI, Pydantic, SQLAlchemy 2, Alembic |
-| Frontend | SolidJS, Vite, TypeScript (strict), Tailwind CSS v4 |
-| Database | SQLite for development, PostgreSQL-compatible for production |
+- **One ledger for the whole household.** Every member signs in with their own account and sees the same money. Any member can add transactions and change budgets; admins manage accounts.
+- **A month-end forecast you can trust.** The Overview shows how much money the household will have when the month ends, counting every budget. An **Explain** button lists every transaction and every budget still to move, so you can check the sum yourself.
+- **Budgets that plan the month.** Each concept (Rent, Groceries, Paycheck…) has a signed amount: negative for money going out, positive for money coming in. Give a budget a due date (once, weekly, every two weeks, monthly) and it shows up under **Coming up** until it's paid.
+- **Goals.** Mark a budget as a goal to track savings on their own screen.
+- **Fast logging.** Type an amount, pick a category, done. Select several transactions with the mouse, or long-press on a phone.
+- **History.** Past months are read-only. Search them, filter by member or category, and see where the money went in a pie chart.
+- **Balance.** The household's balance and this month's money in and out. Optionally, what each member brings in.
+- **Activity feed.** "Alex added −$84.12 to Groceries." Click an entry to jump to what changed.
+- **Months roll over on their own.** No end-of-month routine: last month moves to History and its leftover becomes this month's starting cash.
+- **Made for every screen.** Wide and narrow layouts, mouse and touch, light and dark themes, English and Spanish.
 
-## Quick start
+Not a debt tracker, not a currency converter, not an accounting tool. The currency sign is a label you choose; amounts are never converted.
 
-Two terminals. Node 24 and Python 3.12+.
+## How the numbers work
+
+Every transaction is signed as you type it: `-84.12` is money out, `2240` is money in. Each budget plans one concept for the month.
+
+```text
+Forecast = cash at the start of the month
+         + what the budgets still expect to move
+         + what has already moved this month
+```
+
+Money moved within a budget doesn't change the forecast; it was already planned. Money moved beyond a budget replaces the plan. Example: you planned −$10 for groceries and spent −$30, so the forecast now counts −$30.
+
+## Run it with Docker
+
+You need Docker with the Compose plugin.
+
+```bash
+git clone https://github.com/PeGa/venn-manager.git
+cd venn-manager
+sudo mkdir -p /var/lib/venn-manager
+docker compose up -d --build
+```
+
+Open `http://<your-server>:8080` and sign in as `admin` / `admin`. You'll be asked to choose a new password right away. Then, in **Settings**:
+
+1. Set the household name, time zone and currency sign.
+2. Enter the opening balance: what the household has before it starts using Venn Manager.
+3. Add budget concepts, then set their amounts in **Budget**.
+4. Invite the other members.
+
+### Configuration
+
+Set these in your environment or in a `.env` file next to `docker-compose.yml`.
+
+| Variable | Default | What it does |
+|---|---|---|
+| `VENN_PORT` | `8080` | Port the app listens on |
+| `VENN_DATA_DIR` | `/var/lib/venn-manager` | Folder that holds the database, `venn_manager.db` |
+| `APP_ENV` | `development` | Set to `production` when the app is served over HTTPS, to protect the session cookie |
+| `DEFAULT_ADMIN_USERNAME` | `admin` | First admin's username, used only on the first start |
+| `DEFAULT_ADMIN_PASSWORD` | `admin` | First admin's password, used only on the first start |
+| `DEFAULT_TIMEZONE` | `UTC` | Household time zone on the first start; it decides when months begin and end |
+
+To reach it from outside your home network, put it behind a reverse proxy with HTTPS (Caddy, nginx, Traefik…) and set `APP_ENV=production`.
+
+### Back up
+
+Everything lives in one file. Stop the app, copy the file, start it again:
+
+```bash
+docker compose stop
+cp /var/lib/venn-manager/venn_manager.db ~/venn_manager-$(date +%F).db
+docker compose start
+```
+
+### Update
+
+```bash
+git pull
+docker compose up -d --build
+```
+
+Database migrations run on their own when the container starts. Back up first.
+
+## Development
+
+Requires Python 3.12+ and Node 24. Use two terminals.
 
 ```bash
 cd backend
@@ -37,72 +104,55 @@ npm ci
 npm run dev
 ```
 
-Open http://localhost:5173 and sign in as `admin` / `admin`. The first sign-in asks for a new password. The frontend proxies `/api` to the backend on port 8000.
+Open http://localhost:5173. The dev server forwards `/api` to the backend on port 8000. Local settings live in `backend/.env`; [`docs/backend/README.md`](docs/backend/README.md) lists them all.
 
-## Docker
-
-One container: nginx serves the compiled frontend on `0.0.0.0:80` and forwards `/api` to the backend on `127.0.0.1:8000` inside the container. Migrations run on start. The SQLite database lives in a host directory.
-
-```bash
-sudo mkdir -p /var/lib/venn-manager
-docker compose up -d --build
-```
-
-Open `http://<host>:8080`.
-
-| Variable | Default | Purpose |
-|---|---|---|
-| `VENN_PORT` | `8080` | Host port, bound on `0.0.0.0` |
-| `VENN_DATA_DIR` | `/var/lib/venn-manager` | Host directory mounted at `/data`; holds `venn_manager.db` |
-| `APP_ENV` | `development` | `production` adds the `Secure` cookie flag; use it only behind HTTPS |
-| `DEFAULT_ADMIN_USERNAME`, `DEFAULT_ADMIN_PASSWORD`, `DEFAULT_TIMEZONE` | `admin`, `admin`, `UTC` | First-run seed |
-
-Set them in the environment or in a `.env` file next to `docker-compose.yml`. The data directory is mounted, not the file, because SQLite writes journal files beside the database.
-
-## Environment variables
-
-| Variable | Required | Default | Purpose |
-|---|---|---|---|
-| `DATABASE_URL` | no | `sqlite:///venn_manager.db` | SQLAlchemy connection string |
-| `APP_ENV` | no | `development` | `production` enables the `Secure` cookie flag |
-| `DEFAULT_ADMIN_USERNAME` | no | `admin` | Seeded admin username |
-| `DEFAULT_ADMIN_PASSWORD` | no | `admin` | Seeded admin password |
-| `DEFAULT_TIMEZONE` | no | `UTC` | Seeded household time zone |
-
-Read from the environment or from `backend/.env`, which is gitignored.
-
-## Testing
+### Checks
 
 ```bash
 cd backend
-venv/bin/pytest            # fails below 90% coverage
+venv/bin/pytest
 venv/bin/ruff check .
-venv/bin/mypy              # --strict
+venv/bin/mypy
 ```
 
 ```bash
 cd frontend
-npm run coverage           # fails below 70% on the logic layers
+npm run coverage
 npm run typecheck
 npm run lint
 ```
 
-## Documentation
+### Built with
 
-| Path | Contents |
+| Part | Technology |
 |---|---|
-| `CONTRACTS/FRONTEND.md` | Screens, behavior, which actions reach the backend |
-| `CONTRACTS/API_SURFACE.md` | Endpoints, shapes, errors |
-| `CONTRACTS/BACKEND.md` | Domain rules and every formula |
-| `docs/backend/README.md` | Backend setup, layout, how to change things |
-| `docs/frontend/README.md` | Frontend setup, layout, how to change things |
-| `AGENTS.md` | Rules for any agent working on this repository |
+| Backend | Python, FastAPI, SQLAlchemy, Alembic, SQLite |
+| Frontend | SolidJS, TypeScript, Vite, Tailwind CSS |
+| Container | nginx serving the frontend and proxying the API, in one image |
+
+### Where to look
+
+Behavior is written down before it's built, in three contracts:
+
+| Document | Covers |
+|---|---|
+| [`CONTRACTS/FRONTEND.md`](CONTRACTS/FRONTEND.md) | Every screen and interaction |
+| [`CONTRACTS/API_SURFACE.md`](CONTRACTS/API_SURFACE.md) | Every endpoint, shape and error |
+| [`CONTRACTS/BACKEND.md`](CONTRACTS/BACKEND.md) | Domain rules and every formula |
+| [`docs/backend/README.md`](docs/backend/README.md), [`docs/frontend/README.md`](docs/frontend/README.md) | Code layout and how to change things |
+| [`AGENTS.md`](AGENTS.md) | Coding rules for contributors, human or not |
+
+Changes start with the contract, then a failing test, then the code.
+
+## Roadmap
+
+- A desktop app (Electron).
 
 ## License
 
 Copyright (C) 2026 PeGa!
 
-Venn Manager is free software: you can redistribute it and/or modify it under the terms of the GNU Affero General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version. See [`LICENSE`](LICENSE).
+Venn Manager is free software under the [GNU Affero General Public License v3.0](LICENSE) or any later version.
 
 | You may | You must |
 |---|---|
