@@ -152,7 +152,7 @@ Los cambios arrancan por el contrato, después una prueba que falla, y recién a
 
 Copyright (C) 2026 PeGa!
 
-Venn Manager es software libre bajo la [Licencia Pública General Affero de GNU v3.0](LICENSE) o cualquier versión posterior.
+Venn Manager es software libre bajo la [Licencia Pública General Affero de GNU v3.0](LICENSE) o cualquier versión posterior. Todas las versiones anteriores en el historial de este repositorio también están disponibles bajo AGPL-3.0-or-later.
 
 | Podés | Tenés que |
 |---|---|

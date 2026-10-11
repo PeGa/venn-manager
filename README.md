@@ -152,7 +152,7 @@ Changes start with the contract, then a failing test, then the code.
 
 Copyright (C) 2026 PeGa!
 
-Venn Manager is free software under the [GNU Affero General Public License v3.0](LICENSE) or any later version.
+Venn Manager is free software under the [GNU Affero General Public License v3.0](LICENSE) or any later version. All earlier versions in this repository's history are also available under AGPL-3.0-or-later.
 
 | You may | You must |
 |---|---|
